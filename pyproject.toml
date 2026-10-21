@@ -1,18 +1,21 @@
 [project]
-name = "factorypulse-ai"
+name = "factorymind-ai"
 version = "0.1.0"
 description = "Industrial equipment monitoring and AI experimentation platform"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.0",
     "fastapi",
+    "psycopg[binary]>=3.3.6",
     "pydantic-settings",
+    "sqlalchemy>=2.1.5",
     "uvicorn[standard]",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx",
+    "httpx2>=2.16.0",
     "pytest",
     "ruff",
 ]
