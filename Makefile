@@ -4,7 +4,7 @@
 .PHONY: help install run test lint format check lint-fix
 
 # Команды работы с базой данных
-.PHONY: db-init db-check db-revision db-history db-upgrade
+.PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
 
 help:
 	@echo "FactoryMind AI — команды разработки"
@@ -22,7 +22,7 @@ help:
 	@echo "  make db-check            - проверить подключение и ревизию"
 	@echo "  make db-revision message=\"описание\" - создать миграцию"
 	@echo "  make db-history          - показать историю миграций"
-	@echo "  make db-upgrade           - применить миграции"
+	@echo "  make db-upgrade          - применить миграции"
 	@echo ""
 	@echo "Справка:"
 	@echo "  make help                - показать список команд"
@@ -63,3 +63,9 @@ db-history:
 
 db-upgrade:
 	uv run alembic upgrade head
+
+db-shell:
+	docker compose exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+
+db-start:
+	docker compose up -d db
