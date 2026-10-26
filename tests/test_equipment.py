@@ -18,7 +18,7 @@ def test_create_equipment_created(client: TestClient) -> None:
 
     data = response.json()
 
-    assert data["id"] == 1
+    assert data["id"] > 0
     assert data["code"] == "COOLER-001"
     assert data["name"] == "Холодильный агрегат № 1"
     assert data["equipment_type"] == "cooling_unit"

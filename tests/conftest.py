@@ -5,8 +5,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
-from app.equipment import models  # noqa: F401
+from app.equipment import models as equipment_models  # noqa: F401
 from app.main import app
+from app.telemetry import models as telemetry_models  # noqa: F401
 
 
 @pytest.fixture

@@ -1,13 +1,13 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TelemetryCreate(BaseModel):
     """Данные для создания показаний."""
 
-    temperature_c: float
-    vibration_mm_s: float
+    temperature_c: float = Field(allow_inf_nan=False)
+    vibration_mm_s: float = Field(ge=0, allow_inf_nan=False)
 
 
 class TelemetryResponse(BaseModel):
