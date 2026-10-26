@@ -3,7 +3,8 @@ from logging.config import fileConfig
 from alembic import context
 
 from app.core.database import Base, engine
-from app.equipment import models  # noqa: F401
+from app.equipment import models as equipment_models  # noqa: F401
+from app.telemetry import models as telemetry_models  # noqa: F401
 
 config = context.config
 

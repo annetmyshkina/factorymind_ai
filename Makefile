@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 # Команды приложения
-.PHONY: help install run test lint format check lint-fix
+.PHONY: help install run lint format check lint-fix
 
 # Команды работы с базой данных
 .PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
@@ -12,7 +12,6 @@ help:
 	@echo "Общие команды:"
 	@echo "  make install             - установить зависимости"
 	@echo "  make run                 - запустить FastAPI"
-	@echo "  make test                - запустить тесты"
 	@echo "  make lint                - проверить код"
 	@echo "  make format              - отформатировать код"
 	@echo "  make check               - выполнить все проверки"
@@ -32,9 +31,6 @@ install:
 
 run:
 	uv run uvicorn app.main:app --reload
-
-test:
-	uv run pytest
 
 lint:
 	uv run ruff check .
