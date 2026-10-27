@@ -42,3 +42,19 @@ def client():
         app.dependency_overrides.pop(get_db, None)
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
+
+
+@pytest.fixture
+def equipment(client: TestClient) -> dict:
+    """Создаёт одно оборудование с дефолтными полями."""
+    response = client.post(
+        "/equipment",
+        json={
+            "code": "COOLER-FIXTURE",
+            "name": "Тестовое оборудование",
+            "equipment_type": "cooling_unit",
+            "location": "Цех № 1",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()

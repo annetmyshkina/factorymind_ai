@@ -14,7 +14,7 @@ def test_create_equipment_created(client: TestClient) -> None:
         json=EQUIPMENT_DATA,
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 201, response.text
 
     data = response.json()
 
@@ -27,11 +27,13 @@ def test_create_equipment_created(client: TestClient) -> None:
 
 
 def test_list_equipment_all_records(client: TestClient) -> None:
-    client.post(
+    first_response = client.post(
         "/equipment",
         json=EQUIPMENT_DATA,
     )
-    client.post(
+    assert first_response.status_code == 201, first_response.text
+
+    second_response = client.post(
         "/equipment",
         json={
             "code": "MOTOR-001",
@@ -40,10 +42,11 @@ def test_list_equipment_all_records(client: TestClient) -> None:
             "location": "Цех № 2",
         },
     )
+    assert second_response.status_code == 201, second_response.text
 
     response = client.get("/equipment")
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
 
     data = response.json()
 
@@ -52,25 +55,23 @@ def test_list_equipment_all_records(client: TestClient) -> None:
     assert data[1]["code"] == "MOTOR-001"
 
 
-def test_get_equipment_record(client: TestClient) -> None:
-    create_response = client.post(
-        "/equipment",
-        json=EQUIPMENT_DATA,
-    )
-
-    equipment_id = create_response.json()["id"]
+def test_get_equipment_record(
+    client: TestClient,
+    equipment: dict,
+) -> None:
+    equipment_id = equipment["id"]
 
     response = client.get(f"/equipment/{equipment_id}")
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
 
     data = response.json()
 
     assert data["id"] == equipment_id
-    assert data["code"] == "COOLER-001"
-    assert data["name"] == "Холодильный агрегат № 1"
-    assert data["equipment_type"] == "cooling_unit"
-    assert data["location"] == "Цех № 1"
+    assert data["code"] == equipment["code"]
+    assert data["name"] == equipment["name"]
+    assert data["equipment_type"] == equipment["equipment_type"]
+    assert data["location"] == equipment["location"]
     assert data["is_active"] is True
 
 
@@ -85,28 +86,24 @@ def test_get_equipment_404_when_not_found(
 
 def test_update_equipment_updated_record(
     client: TestClient,
+    equipment: dict,
 ) -> None:
-    create_response = client.post(
-        "/equipment",
-        json=EQUIPMENT_DATA,
-    )
-    equipment_id = create_response.json()["id"]
+    equipment_id = equipment["id"]
+
     response = client.patch(
         f"/equipment/{equipment_id}",
-        json={
-            "location": "Цех №3",
-        },
+        json={"location": "Цех №3"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
 
     data = response.json()
 
     assert data["id"] == equipment_id
     assert data["location"] == "Цех №3"
-    assert data["code"] == EQUIPMENT_DATA["code"]
-    assert data["name"] == EQUIPMENT_DATA["name"]
-    assert data["equipment_type"] == EQUIPMENT_DATA["equipment_type"]
+    assert data["code"] == equipment["code"]
+    assert data["name"] == equipment["name"]
+    assert data["equipment_type"] == equipment["equipment_type"]
     assert data["is_active"] is True
 
 
@@ -124,12 +121,9 @@ def test_update_equipment_404_when_not_found(
 
 def test_update_equipment_422_when_data_is_invalid(
     client: TestClient,
+    equipment: dict,
 ) -> None:
-    create_response = client.post(
-        "/equipment",
-        json=EQUIPMENT_DATA,
-    )
-    equipment_id = create_response.json()["id"]
+    equipment_id = equipment["id"]
 
     empty_response = client.patch(
         f"/equipment/{equipment_id}",
@@ -146,10 +140,17 @@ def test_update_equipment_422_when_data_is_invalid(
 
 def test_create_equipment_409_when_code_exists(
     client: TestClient,
+    equipment: dict,
 ) -> None:
-    client.post("/equipment", json=EQUIPMENT_DATA)
-
-    response = client.post("/equipment", json=EQUIPMENT_DATA)
+    response = client.post(
+        "/equipment",
+        json={
+            **EQUIPMENT_DATA,
+            "code": equipment["code"],
+        },
+    )
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "Оборудование с таким кодом уже существует"}
+    assert response.json() == {
+        "detail": "Оборудование с таким кодом уже существует",
+    }
