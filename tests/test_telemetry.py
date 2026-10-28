@@ -1,8 +1,20 @@
+import pytest
 from fastapi.testclient import TestClient
 
 TELEMETRY_DATA = {
     "temperature_c": 78.5,
     "vibration_mm_s": 4.2,
+}
+
+EXTENDED_TELEMETRY_DATA = {
+    **TELEMETRY_DATA,
+    "ambient_temperature_c": 32.5,
+    "suction_pressure_kpa_g": 450.0,
+    "discharge_pressure_kpa_g": 1600.0,
+    "compressor_current_a": 18.5,
+    "compressor_vsd_frequency_hz": 45.0,
+    "coolant_flow_rate_m3_h": 12.0,
+    "compressor_running": True,
 }
 
 
@@ -227,6 +239,75 @@ def test_get_telemetry_rejects_invalid_limit(
     response = client.get(
         f"/equipment/{equipment['id']}/telemetry",
         params={"limit": 0},
+    )
+
+    assert response.status_code == 422
+
+
+def test_create_telemetry_with_extended_fields(
+    client: TestClient,
+    equipment: dict,
+) -> None:
+    response = client.post(
+        f"/equipment/{equipment['id']}/telemetry",
+        json=EXTENDED_TELEMETRY_DATA,
+    )
+
+    assert response.status_code == 201, response.text
+
+    data = response.json()
+
+    for field, expected_value in EXTENDED_TELEMETRY_DATA.items():
+        assert data[field] == expected_value
+
+
+def test_create_telemetry_without_optional_fields(
+    client: TestClient,
+    equipment: dict,
+) -> None:
+    response = client.post(
+        f"/equipment/{equipment['id']}/telemetry",
+        json=TELEMETRY_DATA,
+    )
+
+    assert response.status_code == 201, response.text
+
+    data = response.json()
+
+    optional_fields = (
+        "ambient_temperature_c",
+        "suction_pressure_kpa_g",
+        "discharge_pressure_kpa_g",
+        "compressor_current_a",
+        "compressor_vsd_frequency_hz",
+        "coolant_flow_rate_m3_h",
+        "compressor_running",
+    )
+
+    for field in optional_fields:
+        assert data[field] is None
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("compressor_current_a", -1.0),
+        ("compressor_vsd_frequency_hz", -1.0),
+        ("coolant_flow_rate_m3_h", -1.0),
+    ],
+)
+def test_create_telemetry_rejects_negative_optional_values(
+    client: TestClient,
+    equipment: dict,
+    field: str,
+    invalid_value: float,
+) -> None:
+    response = client.post(
+        f"/equipment/{equipment['id']}/telemetry",
+        json={
+            **TELEMETRY_DATA,
+            field: invalid_value,
+        },
     )
 
     assert response.status_code == 422

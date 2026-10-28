@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 # Команды приложения
-.PHONY: help install run lint format check lint-fix
+.PHONY: help install run lint format check lint-fix logs
 
 # Команды работы с базой данных
 .PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
@@ -65,3 +65,13 @@ db-shell:
 
 db-start:
 	docker compose up -d db
+
+logs:
+	@for file in logs/app.log logs/errors.log; do \
+		if [ -f "$$file" ]; then \
+			echo "===== $$file ====="; \
+			tail -n 20 "$$file"; \
+		else \
+			echo "Файл $$file пока не создан: $$file"; \
+		fi; \
+	done

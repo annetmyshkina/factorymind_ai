@@ -1,3 +1,6 @@
+import shutil
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -58,3 +61,12 @@ def equipment(client: TestClient) -> dict:
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _cleanup_logs_dir():
+    """Удаляет logs/ после тестовой сессии."""
+    yield
+    logs = Path("logs")
+    if logs.exists():
+        shutil.rmtree(logs)

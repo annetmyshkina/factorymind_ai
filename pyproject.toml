@@ -10,6 +10,7 @@ dependencies = [
     "psycopg[binary]>=3.3.6",
     "pydantic-settings",
     "sqlalchemy>=2.1.5",
+    "structlog>=26.1.0",
     "uvicorn[standard]",
 ]
 
@@ -32,6 +33,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B",]
 ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/**" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"

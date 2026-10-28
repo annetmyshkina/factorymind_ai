@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC
 
 from pydantic import (
     AwareDatetime,
@@ -15,6 +15,35 @@ class TelemetryCreate(BaseModel):
     temperature_c: float = Field(allow_inf_nan=False)
     vibration_mm_s: float = Field(ge=0, allow_inf_nan=False)
 
+    ambient_temperature_c: float | None = Field(
+        default=None,
+        allow_inf_nan=False,
+    )
+    suction_pressure_kpa_g: float | None = Field(
+        default=None,
+        allow_inf_nan=False,
+    )
+    discharge_pressure_kpa_g: float | None = Field(
+        default=None,
+        allow_inf_nan=False,
+    )
+    compressor_current_a: float | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+    )
+    compressor_vsd_frequency_hz: float | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+    )
+    coolant_flow_rate_m3_h: float | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+    )
+    compressor_running: bool | None = None
+
 
 class TelemetryResponse(BaseModel):
     """Данные показаний, возвращаемые клиенту."""
@@ -23,9 +52,18 @@ class TelemetryResponse(BaseModel):
 
     id: int
     equipment_id: int
-    measured_at: datetime
+    measured_at: AwareDatetime
+
     temperature_c: float
     vibration_mm_s: float
+
+    ambient_temperature_c: float | None
+    suction_pressure_kpa_g: float | None
+    discharge_pressure_kpa_g: float | None
+    compressor_current_a: float | None
+    compressor_vsd_frequency_hz: float | None
+    coolant_flow_rate_m3_h: float | None
+    compressor_running: bool | None
 
 
 class TelemetryHistoryParams(BaseModel):
@@ -43,6 +81,8 @@ class TelemetryHistoryParams(BaseModel):
         value: AwareDatetime | None,
     ) -> AwareDatetime | None:
         """Приводит даты с часовым поясом к UTC."""
+
         if value is None:
             return None
+
         return value.astimezone(UTC)
