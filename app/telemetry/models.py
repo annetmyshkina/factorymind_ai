@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import ForeignKey, func
+from sqlalchemy import ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -45,4 +45,18 @@ class EquipmentTelemetry(Base):
     )
     compressor_running: Mapped[bool | None] = mapped_column(
         nullable=True,
+    )
+
+
+class ProcessedMQTTEvent(Base):
+    """Обработанное MQTT-сообщение (идемпотентность)."""
+
+    __tablename__ = "processed_mqtt_events"
+
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    processed_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )

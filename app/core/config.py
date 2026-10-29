@@ -18,5 +18,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    mqtt_host: str = "127.0.0.1"
+    mqtt_port: int = 1883
+    mqtt_telemetry_topic: str = "factorymind/equipment/+/telemetry"
+
 
 settings = Settings()

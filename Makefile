@@ -6,6 +6,9 @@
 # Команды работы с базой данных
 .PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
 
+# Команды работы mosquitto
+.PHONY: mqtt-start mqtt-stop mqtt-logs mqtt-check
+
 help:
 	@echo "FactoryMind AI — команды разработки"
 	@echo ""
@@ -25,6 +28,10 @@ help:
 	@echo ""
 	@echo "Справка:"
 	@echo "  make help                - показать список команд"
+	@echo "  make mqtt-start           - запустить MQTT-брокер"
+	@echo "  make mqtt-stop            - остановить MQTT-брокер"
+	@echo "  make mqtt-logs            - показать логи MQTT-брокера"
+	@echo "  make mqtt-check           - проверить состояние брокера"
 
 install:
 	uv sync --all-groups
@@ -75,3 +82,15 @@ logs:
 			echo "Файл $$file пока не создан: $$file"; \
 		fi; \
 	done
+
+mqtt-start:
+	docker compose up -d mosquitto
+
+mqtt-stop:
+	docker compose stop mosquitto
+
+mqtt-logs:
+	docker compose logs -f mosquitto
+
+mqtt-check:
+	docker compose ps mosquitto
