@@ -69,7 +69,7 @@ def configure_logging() -> None:
         force=True,
     )
 
-    for name in ("httpx", "httpcore"):
+    for name in ("httpx", "httpx2", "httpcore"):
         logging.getLogger(name).setLevel(logging.WARNING)
 
     for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
