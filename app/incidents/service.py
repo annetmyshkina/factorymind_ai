@@ -9,6 +9,7 @@ from app.incidents.models import (
     IncidentDeviation,
     IncidentEvent,
 )
+from app.monitoring.models import EquipmentDeviation
 
 logger = structlog.get_logger(__name__)
 
@@ -23,6 +24,10 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 
 class InvalidTransitionError(ValueError):
     """Недопустимый переход статуса инцидента."""
+
+
+class DeviationNotFoundError(ValueError):
+    """Отклонение для привязки к инциденту не найдено."""
 
 
 def create_incident(
@@ -148,6 +153,9 @@ def link_deviation(
     deviation_id: int,
 ) -> None:
     """Привязывает отклонение (идемпотентно)."""
+    if db.get(EquipmentDeviation, deviation_id) is None:
+        raise DeviationNotFoundError("Отклонение не найдено")
+
     existing = db.scalar(
         select(IncidentDeviation).where(
             IncidentDeviation.deviation_id == deviation_id,

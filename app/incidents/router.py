@@ -18,6 +18,7 @@ from app.incidents.schemas import (
     LinkDeviationRequest,
 )
 from app.incidents.service import (
+    DeviationNotFoundError,
     InvalidTransitionError,
     assign,
     change_status,
@@ -132,6 +133,10 @@ def update_incident(
         incident.severity = payload.severity
         db.commit()
 
+    if "description" in payload.model_fields_set:
+        incident.description = payload.description
+        db.commit()
+
     if "assigned_to" in payload.model_fields_set:
         assign(db, incident, payload.assigned_to)
 
@@ -160,6 +165,11 @@ def add_deviation(
     incident = _load_incident(db, incident_id)
     try:
         link_deviation(db, incident, payload.deviation_id)
+    except DeviationNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
