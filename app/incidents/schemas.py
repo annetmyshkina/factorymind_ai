@@ -41,7 +41,7 @@ class IncidentUpdate(BaseModel):
     )
     assigned_to: str | None = Field(
         default=None,
-        description="Новый исполнитель (null — снять)",
+        description="Новый исполнитель",
     )
     severity: IncidentSeverity | None = Field(
         default=None,
@@ -76,6 +76,9 @@ class IncidentResponse(BaseModel):
 
     id: int = Field(description="ID инцидента")
     equipment_id: int = Field(description="ID оборудования")
+    equipment_code: str = Field(
+        description="Код оборудования",
+    )
     title: str = Field(description="Краткое описание")
     description: str | None = Field(description="Подробное описание")
     status: IncidentStatus = Field(description="Текущий статус")

@@ -85,6 +85,11 @@ class Incident(Base):
         lazy="raise",
     )
 
+    @property
+    def equipment_code(self) -> str:
+        """Код оборудования."""
+        return self.equipment.code
+
 
 class IncidentDeviation(Base):
     """Связь инцидента с отклонением (M2M, одно отклонение — один инцидент)."""
