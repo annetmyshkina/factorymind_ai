@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
@@ -9,10 +10,14 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.types import UTCDateTime
+
+if TYPE_CHECKING:
+    from app.equipment.models import Equipment
+    from app.monitoring.models import EquipmentDeviation
 
 
 class Incident(Base):
@@ -69,6 +74,17 @@ class Incident(Base):
         nullable=True,
     )
 
+    equipment: Mapped["Equipment"] = relationship(lazy="raise")
+
+    deviations: Mapped[list["EquipmentDeviation"]] = relationship(
+        secondary="incident_deviations",
+        lazy="raise",
+    )
+    events: Mapped[list["IncidentEvent"]] = relationship(
+        back_populates="incident",
+        lazy="raise",
+    )
+
 
 class IncidentDeviation(Base):
     """Связь инцидента с отклонением (M2M, одно отклонение — один инцидент)."""
@@ -109,4 +125,9 @@ class IncidentEvent(Base):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
         nullable=False,
+    )
+
+    incident: Mapped["Incident"] = relationship(
+        back_populates="events",
+        lazy="raise",
     )
