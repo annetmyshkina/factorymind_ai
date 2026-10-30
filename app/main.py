@@ -7,16 +7,16 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.logging import configure_logging
-from app.core.middleware import RequestIDMiddleware
+from app.core.middleware import RequestContextMiddleware
 from app.telemetry.mqtt.client import MQTTSubscriber
+
+configure_logging()
 
 logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    configure_logging()
-
     subscriber: MQTTSubscriber | None = None
 
     if settings.environment != "test":
@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
         )
         subscriber.start()
         app.state.mqtt_client = subscriber
+        logger.info("mqtt_connected")
 
     try:
         yield
@@ -42,5 +43,5 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(RequestIDMiddleware)
+app.add_middleware(RequestContextMiddleware)
 app.include_router(api_router)

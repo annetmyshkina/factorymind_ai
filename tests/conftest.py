@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 
 os.environ["ENVIRONMENT"] = "test"
+os.environ["LOG_TO_FILES"] = "false"
 
 import pytest
 from fastapi.testclient import TestClient
