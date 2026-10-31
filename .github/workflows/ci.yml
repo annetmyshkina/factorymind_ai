@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint and tests
+    runs-on: ubuntu-latest
+    env:
+      # Settings требует пароль, а .env в CI нет.
+      POSTGRES_PASSWORD: ci
+      # Включает очистку logs/ после прогона (см. tests/conftest.py).
+      CI: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-groups --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Tests with coverage
+        run: >-
+          uv run pytest
+          --cov=app
+          --cov-report=term-missing
+          --cov-fail-under=85

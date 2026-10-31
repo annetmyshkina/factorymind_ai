@@ -20,6 +20,7 @@ dependencies = [
 dev = [
     "httpx2>=2.16.0",
     "pytest",
+    "pytest-cov>=7.1.0",
     "ruff",
 ]
 
@@ -42,3 +43,11 @@ ignore = ["B008"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.coverage.run]
+source = ["app"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true

@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 # Команды приложения
-.PHONY: help install run lint format check lint-fix logs
+.PHONY: help install run lint format check lint-fix test coverage logs
 
 # Команды работы с базой данных
 .PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
@@ -18,6 +18,8 @@ help:
 	@echo "  make lint                - проверить код"
 	@echo "  make format              - отформатировать код"
 	@echo "  make check               - выполнить все проверки"
+	@echo "  make test                - запустить тесты"
+	@echo "  make coverage            - тесты с покрытием (порог 85%)"
 	@echo ""
 	@echo "Работа с базой данных:"
 	@echo "  make db-init             - инициализировать Alembic"
@@ -51,6 +53,12 @@ format:
 check: lint
 	uv run ruff format --check .
 	uv run pytest
+
+test:
+	uv run pytest
+
+coverage:
+	uv run pytest --cov=app --cov-report=term-missing
 
 db-init:
 	uv run alembic init migrations
