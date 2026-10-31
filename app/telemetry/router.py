@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.equipment.models import Equipment
+from app.incidents.automation import ensure_incident_for_deviation
 from app.monitoring.service import (
     InvalidMonitoringRuleError,
     evaluate_telemetry,
@@ -58,7 +59,9 @@ def create_telemetry(
         db.add(telemetry)
         db.flush()
 
-        evaluate_telemetry(db, telemetry)
+        deviations = evaluate_telemetry(db, telemetry)
+        for deviation in deviations:
+            ensure_incident_for_deviation(db, deviation)
 
         db.commit()
         db.refresh(telemetry)

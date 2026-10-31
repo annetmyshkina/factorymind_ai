@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.equipment.models import Equipment
+from app.incidents.automation import ensure_incident_for_deviation
 from app.monitoring.service import evaluate_telemetry
 from app.telemetry.models import EquipmentTelemetry, ProcessedMQTTEvent
 from app.telemetry.mqtt.schemas import MQTTTelemetryMessage
@@ -58,7 +59,8 @@ def handle_message(db: Session, payload: bytes) -> None:
     db.add(telemetry)
     db.add(ProcessedMQTTEvent(event_id=message.event_id))
     db.flush()
-    evaluate_telemetry(db, telemetry)
+    for deviation in evaluate_telemetry(db, telemetry):
+        ensure_incident_for_deviation(db, deviation)
     db.commit()
 
     logger.info(

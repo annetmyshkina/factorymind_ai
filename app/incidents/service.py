@@ -30,7 +30,7 @@ class DeviationNotFoundError(ValueError):
     """Отклонение для привязки к инциденту не найдено."""
 
 
-def create_incident(
+def add_incident(
     db: Session,
     *,
     equipment_id: int,
@@ -39,7 +39,7 @@ def create_incident(
     severity: str = "medium",
     assigned_to: str | None = None,
 ) -> Incident:
-    """Создаёт инцидент и пишет событие 'created'."""
+    """Добавляет инцидент и событие 'created' в сессию без commit."""
     incident = Incident(
         equipment_id=equipment_id,
         title=title,
@@ -57,6 +57,27 @@ def create_incident(
             event_type="created",
             payload={"severity": severity, "title": title},
         )
+    )
+    return incident
+
+
+def create_incident(
+    db: Session,
+    *,
+    equipment_id: int,
+    title: str,
+    description: str | None = None,
+    severity: str = "medium",
+    assigned_to: str | None = None,
+) -> Incident:
+    """Создаёт инцидент и фиксирует транзакцию."""
+    incident = add_incident(
+        db,
+        equipment_id=equipment_id,
+        title=title,
+        description=description,
+        severity=severity,
+        assigned_to=assigned_to,
     )
     db.commit()
     db.refresh(incident)
@@ -147,15 +168,12 @@ def assign(
     return incident
 
 
-def link_deviation(
+def add_deviation_link(
     db: Session,
     incident: Incident,
     deviation_id: int,
 ) -> None:
-    """Привязывает отклонение (идемпотентно)."""
-    if db.get(EquipmentDeviation, deviation_id) is None:
-        raise DeviationNotFoundError("Отклонение не найдено")
-
+    """Связывает отклонение с инцидентом без commit (идемпотентно)."""
     existing = db.scalar(
         select(IncidentDeviation).where(
             IncidentDeviation.deviation_id == deviation_id,
@@ -182,6 +200,18 @@ def link_deviation(
             payload={"deviation_id": deviation_id},
         )
     )
+
+
+def link_deviation(
+    db: Session,
+    incident: Incident,
+    deviation_id: int,
+) -> None:
+    """Привязывает отклонение (идемпотентно) и фиксирует транзакцию."""
+    if db.get(EquipmentDeviation, deviation_id) is None:
+        raise DeviationNotFoundError("Отклонение не найдено")
+
+    add_deviation_link(db, incident, deviation_id)
     db.commit()
 
     logger.info(
