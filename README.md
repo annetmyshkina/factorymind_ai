@@ -106,7 +106,14 @@ app/
   telemetry/     показания, MQTT-подписчик и обработчик
   monitoring/    правила мониторинга и отклонения
   incidents/     инциденты: модели, сервис, API
+  ai/            AI Gateway: контракты и провайдеры LLM
 tests/           pytest, SQLite in-memory
 migrations/      Alembic
 docs/            документация
 ```
+
+## Документация
+
+- [Спецификация проекта](docs/spec.md) — требования, домен, архитектура,
+  AI-подсистема, критерии оценки и этапы развития.
+- OpenAPI генерируется FastAPI: `/openapi.json`, интерактивная версия — `/docs`.
