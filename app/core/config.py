@@ -22,5 +22,15 @@ class Settings(BaseSettings):
     mqtt_port: int = 1883
     mqtt_telemetry_topic: str = "factorymind/equipment/+/telemetry"
 
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "llama3.1"
+
+    compatible_base_url: str | None = None
+    compatible_model: str | None = None
+    compatible_api_key: str | None = None
+    compatible_auth_scheme: str = "Bearer"
+
+    llm_timeout_seconds: float = 60.0
+
 
 settings = Settings()

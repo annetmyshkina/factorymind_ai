@@ -196,6 +196,7 @@ dependencies = [
     { name = "alembic" },
     { name = "concurrent-log-handler" },
     { name = "fastapi" },
+    { name = "httpx2" },
     { name = "paho-mqtt" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
@@ -206,7 +207,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx2" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -217,6 +217,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.20.0" },
     { name = "concurrent-log-handler", specifier = ">=0.9.31" },
     { name = "fastapi" },
+    { name = "httpx2", specifier = ">=2.16.0" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pydantic-settings" },
@@ -227,7 +228,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx2", specifier = ">=2.16.0" },
     { name = "pytest" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff" },
