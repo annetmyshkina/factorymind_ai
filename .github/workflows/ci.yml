@@ -43,3 +43,50 @@ jobs:
           --cov=app
           --cov-report=term-missing
           --cov-fail-under=85
+
+  migrations:
+    name: Migrations on PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: factorymind
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: factorymind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U factorymind -d factorymind"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_USER: factorymind
+      POSTGRES_PASSWORD: ci
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: factorymind
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-groups --locked
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Check schema drift
+        run: uv run alembic check
+
+      - name: Verify rollback
+        run: |
+          uv run alembic downgrade base
+          uv run alembic upgrade head
