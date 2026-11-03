@@ -75,3 +75,34 @@ class LLMCallResponse(BaseModel):
     prompt_tokens: int | None = Field(description="Токены запроса")
     completion_tokens: int | None = Field(description="Токены ответа")
     created_at: AwareDatetime = Field(description="Время вызова (UTC)")
+
+
+class PromptVersionCreate(BaseModel):
+    """Запрос на создание версии промпта."""
+
+    name: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Имя промпта",
+    )
+    version: str = Field(
+        min_length=1,
+        max_length=50,
+        description="Версия промпта",
+    )
+    content: str = Field(
+        min_length=1,
+        description="Текст промпта",
+    )
+
+
+class PromptVersionResponse(BaseModel):
+    """Сохранённая версия промпта."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description="ID версии")
+    name: str = Field(description="Имя промпта")
+    version: str = Field(description="Версия промпта")
+    content: str = Field(description="Текст промпта")
+    created_at: AwareDatetime = Field(description="Время создания (UTC)")

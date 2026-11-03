@@ -5,13 +5,19 @@ from typing import Annotated, Literal
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ai.contracts import ChatMessage
 from app.ai.errors import ProviderNotConfiguredError, UnknownProviderError
-from app.ai.models import LLMCall
+from app.ai.models import LLMCall, PromptVersion
 from app.ai.providers import build_provider
-from app.ai.schemas import LLMCallCreate, LLMCallResponse
+from app.ai.schemas import (
+    LLMCallCreate,
+    LLMCallResponse,
+    PromptVersionCreate,
+    PromptVersionResponse,
+)
 from app.ai.service import execute_call
 from app.core.config import settings
 from app.core.database import get_db
@@ -114,3 +120,66 @@ def get_call(
             detail="Вызов не найден",
         )
     return call
+
+
+@router.post(
+    "/prompts",
+    response_model=PromptVersionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_prompt_version(
+    payload: PromptVersionCreate,
+    db: Session = Depends(get_db),
+) -> PromptVersionResponse:
+    """Создаёт неизменяемую версию промпта."""
+    prompt = PromptVersion(
+        name=payload.name,
+        version=payload.version,
+        content=payload.content,
+    )
+    db.add(prompt)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Версия промпта уже существует",
+        ) from None
+
+    db.refresh(prompt)
+    return prompt
+
+
+@router.get("/prompts", response_model=list[PromptVersionResponse])
+def list_prompt_versions(
+    name: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    db: Session = Depends(get_db),
+) -> list[PromptVersionResponse]:
+    """Возвращает версии промптов."""
+    query = select(PromptVersion).order_by(
+        PromptVersion.name,
+        PromptVersion.id,
+    )
+    if name is not None:
+        query = query.where(PromptVersion.name == name)
+
+    query = query.offset(offset).limit(limit)
+    return list(db.scalars(query).all())
+
+
+@router.get("/prompts/{prompt_id}", response_model=PromptVersionResponse)
+def get_prompt_version(
+    prompt_id: int,
+    db: Session = Depends(get_db),
+) -> PromptVersionResponse:
+    """Возвращает одну версию промпта."""
+    prompt = db.get(PromptVersion, prompt_id)
+    if prompt is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Версия промпта не найдена",
+        )
+    return prompt
