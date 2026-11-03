@@ -1,0 +1,77 @@
+"""Схемы API журнала вызовов LLM."""
+
+from typing import Literal
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
+
+class ChatMessageSchema(BaseModel):
+    """Сообщение чата в запросе к модели."""
+
+    role: Literal["system", "user", "assistant"] = Field(
+        description="Роль автора сообщения",
+    )
+    content: str = Field(
+        min_length=1,
+        description="Текст сообщения",
+    )
+
+
+class LLMCallCreate(BaseModel):
+    """Запрос на вызов модели."""
+
+    provider: str = Field(
+        min_length=1,
+        max_length=50,
+        description="Имя провайдера: ollama или compatible",
+    )
+    model: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Переопределение модели по умолчанию",
+    )
+    messages: list[ChatMessageSchema] = Field(
+        min_length=1,
+        description="Сообщения чата",
+    )
+    temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        description="Температура генерации",
+    )
+    max_tokens: int | None = Field(
+        default=None,
+        gt=0,
+        description="Ограничение длины ответа",
+    )
+    prompt_version: str | None = Field(
+        default=None,
+        max_length=50,
+        description="Метка версии промпта для воспроизводимости",
+    )
+
+
+class LLMCallResponse(BaseModel):
+    """Сохранённый вызов модели."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description="ID вызова")
+    provider: str = Field(description="Провайдер")
+    model: str = Field(description="Фактическая модель")
+    prompt_version: str | None = Field(description="Версия промпта")
+    request_messages: list[dict[str, str]] = Field(
+        description="Входные сообщения",
+    )
+    parameters: dict[str, object] = Field(
+        description="Параметры генерации",
+    )
+    response_text: str | None = Field(description="Текст ответа")
+    status: Literal["success", "error"] = Field(description="Статус вызова")
+    error_type: str | None = Field(description="Тип ошибки")
+    error_message: str | None = Field(description="Текст ошибки")
+    latency_ms: int = Field(description="Длительность вызова, мс")
+    prompt_tokens: int | None = Field(description="Токены запроса")
+    completion_tokens: int | None = Field(description="Токены ответа")
+    created_at: AwareDatetime = Field(description="Время вызова (UTC)")

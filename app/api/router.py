@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.ai.router import router as ai_router
 from app.api.health import router as health_router
 from app.equipment.router import router as equipment_router
 from app.incidents.router import router as incidents_router
@@ -13,3 +14,4 @@ api_router.include_router(equipment_router)
 api_router.include_router(telemetry_router)
 api_router.include_router(monitoring_router)
 api_router.include_router(incidents_router)
+api_router.include_router(ai_router)

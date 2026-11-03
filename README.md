@@ -61,6 +61,9 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 | `PATCH` | `/incidents/{id}` | Статус, severity, исполнитель, описание |
 | `POST` | `/incidents/{id}/deviations` | Привязать отклонение (идемпотентно) |
 | `GET` | `/incidents/{id}/events` | История событий инцидента |
+| `POST` | `/ai/calls` | Вызвать модель и сохранить вызов |
+| `GET` | `/ai/calls` | Журнал (`provider`, `status`, `limit`, `offset`) |
+| `GET` | `/ai/calls/{id}` | Карточка вызова |
 
 Статусы инцидента: `open → in_progress → resolved → closed`, допускается
 `open ↔ closed`, `in_progress → open`, `resolved → in_progress`. Недопустимый
