@@ -30,6 +30,10 @@ class DeviationNotFoundError(ValueError):
     """Отклонение для привязки к инциденту не найдено."""
 
 
+class DeviationEquipmentMismatchError(ValueError):
+    """Отклонение относится к другому оборудованию."""
+
+
 def add_incident(
     db: Session,
     *,
@@ -208,8 +212,14 @@ def link_deviation(
     deviation_id: int,
 ) -> None:
     """Привязывает отклонение (идемпотентно) и фиксирует транзакцию."""
-    if db.get(EquipmentDeviation, deviation_id) is None:
+    deviation = db.get(EquipmentDeviation, deviation_id)
+    if deviation is None:
         raise DeviationNotFoundError("Отклонение не найдено")
+
+    if deviation.equipment_id != incident.equipment_id:
+        raise DeviationEquipmentMismatchError(
+            f"Отклонение {deviation_id} относится к другому оборудованию",
+        )
 
     add_deviation_link(db, incident, deviation_id)
     db.commit()

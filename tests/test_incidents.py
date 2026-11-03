@@ -475,6 +475,39 @@ def test_link_missing_deviation_404(
     assert [e["event_type"] for e in events] == ["created"]
 
 
+def test_link_deviation_from_other_equipment_conflict(
+    client: TestClient,
+    equipment: dict,
+    db_session: Session,
+) -> None:
+    other = client.post(
+        "/equipment",
+        json={
+            "code": "OTHER-EQ",
+            "name": "Other",
+            "equipment_type": "cooling_unit",
+            "location": "X",
+        },
+    ).json()
+    deviation_id = _create_deviation(db_session, other["id"])
+
+    incident = _create_incident(client, equipment["id"])
+    url = f"/incidents/{incident['id']}"
+
+    response = client.post(
+        f"{url}/deviations",
+        json={"deviation_id": deviation_id},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": f"Отклонение {deviation_id} относится к другому оборудованию",
+    }
+    assert client.get(url).json()["deviation_ids"] == []
+    events = client.get(f"{url}/events").json()
+    assert [e["event_type"] for e in events] == ["created"]
+
+
 def test_list_incidents_no_n_plus_1(
     client: TestClient,
     equipment: dict,
