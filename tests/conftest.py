@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.ai import models as ai_models  # noqa: F401
 from app.core.database import Base, get_db
 from app.equipment import models as equipment_models  # noqa: F401
 from app.main import app

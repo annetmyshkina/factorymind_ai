@@ -2,6 +2,7 @@ from logging.config import fileConfig
 
 from alembic import context
 
+from app.ai import models as ai_models  # noqa: F401
 from app.core.database import Base, engine
 from app.equipment import models as equipment_models  # noqa: F401
 from app.incidents import models as incidents_models  # noqa: F401
