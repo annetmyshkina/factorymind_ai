@@ -1,10 +1,11 @@
-"""Журнал вызовов LLM."""
+"""Модели AI: журнал вызовов, версии промптов, эксперименты."""
 
 from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
     CheckConstraint,
+    ForeignKey,
     Index,
     String,
     Text,
@@ -35,6 +36,13 @@ class LLMCall(Base):
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     prompt_version: Mapped[str | None] = mapped_column(
         String(50),
+        nullable=True,
+    )
+
+    # FK на прогон эксперимента (nullable: обычные вызовы без эксперимента)
+    experiment_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("experiment_runs.id", ondelete="SET NULL"),
+        index=True,
         nullable=True,
     )
 
@@ -82,6 +90,102 @@ class PromptVersion(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     version: Mapped[str] = mapped_column(String(50), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class Experiment(Base):
+    """Эксперимент: сценарий на неизменяемой версии промпта."""
+
+    __tablename__ = "experiments"
+    __table_args__ = (Index("ix_experiments_created_at", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    prompt_version_id: Mapped[int] = mapped_column(
+        ForeignKey("prompt_versions.id", ondelete="RESTRICT"),
+        index=True,
+        nullable=False,
+    )
+
+    # JSON: входные данные сценария (температура, пороги и т.д.)
+    scenario: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+    )
+    # JSON: критерии оценки (correctness, groundedness, ...)
+    criteria: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class ExperimentRun(Base):
+    """Один прогон эксперимента на конкретной модели."""
+
+    __tablename__ = "experiment_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'running', 'succeeded', 'failed')",
+            name="ck_experiment_runs_status",
+        ),
+        UniqueConstraint(
+            "experiment_id",
+            "provider",
+            "model",
+            name="uq_experiment_runs_exp_provider_model",
+        ),
+        Index("ix_experiment_runs_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    experiment_id: Mapped[int] = mapped_column(
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # JSON: параметры генерации (temperature, max_tokens, seed, ...)
+    parameters: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",
+        server_default="pending",
+        nullable=False,
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    started_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(),
+        nullable=True,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(),
+        nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(),

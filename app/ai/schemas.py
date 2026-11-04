@@ -106,3 +106,90 @@ class PromptVersionResponse(BaseModel):
     version: str = Field(description="Версия промпта")
     content: str = Field(description="Текст промпта")
     created_at: AwareDatetime = Field(description="Время создания (UTC)")
+
+
+# ---------- Эксперименты (4.2) ----------
+
+
+ExperimentRunStatus = Literal["pending", "running", "succeeded", "failed"]
+
+
+class ExperimentCreate(BaseModel):
+    """Запрос на создание эксперимента."""
+
+    name: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Название эксперимента",
+    )
+    description: str | None = Field(
+        default=None,
+        description="Описание эксперимента",
+    )
+    prompt_version_id: int = Field(
+        description="ID неизменяемой версии промпта",
+    )
+    scenario: dict = Field(
+        description="Входные данные сценария (JSON)",
+    )
+    criteria: dict = Field(
+        description="Критерии оценки (JSON)",
+    )
+
+
+class ExperimentResponse(BaseModel):
+    """Эксперимент в ответе API."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description="ID эксперимента")
+    name: str = Field(description="Название")
+    description: str | None = Field(description="Описание")
+    prompt_version_id: int = Field(description="ID версии промпта")
+    scenario: dict = Field(description="Сценарий")
+    criteria: dict = Field(description="Критерии оценки")
+    created_at: AwareDatetime = Field(description="Создан (UTC)")
+
+
+class ExperimentRunCreate(BaseModel):
+    """Запрос на создание прогона эксперимента."""
+
+    provider: str = Field(
+        min_length=1,
+        max_length=50,
+        description="Имя провайдера",
+    )
+    model: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Имя модели",
+    )
+    parameters: dict = Field(
+        default_factory=dict,
+        description="Параметры генерации (temperature, max_tokens, ...)",
+    )
+
+
+class ExperimentRunResponse(BaseModel):
+    """Прогон эксперимента в ответе API."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description="ID прогона")
+    experiment_id: int = Field(description="ID эксперимента")
+    provider: str = Field(description="Провайдер")
+    model: str = Field(description="Модель")
+    parameters: dict = Field(description="Параметры генерации")
+    status: ExperimentRunStatus = Field(description="Статус прогона")
+    error: str | None = Field(description="Текст ошибки (если failed)")
+    started_at: AwareDatetime | None = Field(description="Начат (UTC)")
+    finished_at: AwareDatetime | None = Field(description="Завершён (UTC)")
+    created_at: AwareDatetime = Field(description="Создан (UTC)")
+
+
+class ExperimentDetailResponse(ExperimentResponse):
+    """Эксперимент + прогоны."""
+
+    runs: list[ExperimentRunResponse] = Field(
+        description="Прогоны эксперимента",
+    )
