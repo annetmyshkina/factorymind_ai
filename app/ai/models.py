@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -193,3 +194,58 @@ class ExperimentRun(Base):
         server_default=func.now(),
         nullable=False,
     )
+
+
+class Evaluation(Base):
+    """Детерминированная оценка одного сохранённого LLM-вызова."""
+
+    __tablename__ = "evaluations"
+    __table_args__ = (
+        UniqueConstraint(
+            "llm_call_id",
+            name="uq_evaluations_llm_call_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    llm_call_id: Mapped[int] = mapped_column(
+        ForeignKey("llm_calls.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    evaluator: Mapped[str] = mapped_column(String(50), nullable=False)
+    summary: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class EvaluationResult(Base):
+    """Результат оценки по одному независимому критерию."""
+
+    __tablename__ = "evaluation_results"
+    __table_args__ = (
+        CheckConstraint(
+            "score >= 0 AND score <= 2",
+            name="ck_evaluation_results_score",
+        ),
+        UniqueConstraint(
+            "evaluation_id",
+            "criterion",
+            name="uq_evaluation_results_evaluation_criterion",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    evaluation_id: Mapped[int] = mapped_column(
+        ForeignKey("evaluations.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    criterion: Mapped[str] = mapped_column(String(100), nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    comment: Mapped[str] = mapped_column(Text, nullable=False)

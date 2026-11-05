@@ -32,6 +32,7 @@ def execute_call(
     temperature: float = 0.0,
     max_tokens: int | None = None,
     prompt_version: str | None = None,
+    experiment_run_id: int | None = None,
 ) -> LLMCall:
     """Выполняет вызов провайдера и сохраняет его в журнал.
 
@@ -51,6 +52,7 @@ def execute_call(
             provider=provider.name,
             model=provider.model,
             prompt_version=prompt_version,
+            experiment_run_id=experiment_run_id,
             request_messages=_messages_payload(messages),
             parameters=_parameters(temperature, max_tokens),
             status="error",
@@ -74,6 +76,7 @@ def execute_call(
         provider=response.provider,
         model=response.model,
         prompt_version=prompt_version,
+        experiment_run_id=experiment_run_id,
         request_messages=_messages_payload(messages),
         parameters=_parameters(temperature, max_tokens),
         response_text=response.content,

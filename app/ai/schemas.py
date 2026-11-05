@@ -1,8 +1,8 @@
 """Схемы API журнала вызовов LLM."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class ChatMessageSchema(BaseModel):
@@ -114,8 +114,48 @@ class PromptVersionResponse(BaseModel):
 ExperimentRunStatus = Literal["pending", "running", "succeeded", "failed"]
 
 
+class GenerationParameters(BaseModel):
+    """Поддерживаемые параметры генерации одного прогона."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(default=None, gt=0)
+
+
+CriterionTerm = Annotated[str, Field(min_length=1)]
+CriterionName = Annotated[str, Field(min_length=1, max_length=100)]
+
+
+class DeterministicCriterion(BaseModel):
+    """Один воспроизводимый критерий проверки текста ответа."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    evaluator: Literal["contains_all", "contains_any", "excludes_all"]
+    terms: list[CriterionTerm] = Field(min_length=1)
+    case_sensitive: bool = False
+
+
+class ExperimentRunCreate(BaseModel):
+    """Запрос на создание прогона эксперимента."""
+
+    provider: Literal["ollama", "compatible"] = Field(
+        description="Имя провайдера",
+    )
+    model: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Имя модели",
+    )
+    parameters: GenerationParameters = Field(
+        default_factory=GenerationParameters,
+        description="Параметры генерации (temperature, max_tokens, ...)",
+    )
+
+
 class ExperimentCreate(BaseModel):
-    """Запрос на создание эксперимента."""
+    """Атомарное создание эксперимента и набора его прогонов."""
 
     name: str = Field(
         min_length=1,
@@ -127,14 +167,28 @@ class ExperimentCreate(BaseModel):
         description="Описание эксперимента",
     )
     prompt_version_id: int = Field(
+        gt=0,
         description="ID неизменяемой версии промпта",
     )
-    scenario: dict = Field(
+    scenario: dict[str, object] = Field(
+        min_length=1,
         description="Входные данные сценария (JSON)",
     )
-    criteria: dict = Field(
-        description="Критерии оценки (JSON)",
+    criteria: dict[CriterionName, DeterministicCriterion] = Field(
+        min_length=1,
+        description="Именованные критерии детерминированной оценки",
     )
+    runs: list[ExperimentRunCreate] = Field(
+        min_length=1,
+        description="Сравниваемые провайдеры и модели",
+    )
+
+    @model_validator(mode="after")
+    def runs_are_unique(self) -> "ExperimentCreate":
+        keys = [(run.provider, run.model) for run in self.runs]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Прогоны provider/model не должны повторяться")
+        return self
 
 
 class ExperimentResponse(BaseModel):
@@ -146,28 +200,9 @@ class ExperimentResponse(BaseModel):
     name: str = Field(description="Название")
     description: str | None = Field(description="Описание")
     prompt_version_id: int = Field(description="ID версии промпта")
-    scenario: dict = Field(description="Сценарий")
-    criteria: dict = Field(description="Критерии оценки")
+    scenario: dict[str, object] = Field(description="Сценарий")
+    criteria: dict[str, object] = Field(description="Критерии оценки")
     created_at: AwareDatetime = Field(description="Создан (UTC)")
-
-
-class ExperimentRunCreate(BaseModel):
-    """Запрос на создание прогона эксперимента."""
-
-    provider: str = Field(
-        min_length=1,
-        max_length=50,
-        description="Имя провайдера",
-    )
-    model: str = Field(
-        min_length=1,
-        max_length=100,
-        description="Имя модели",
-    )
-    parameters: dict = Field(
-        default_factory=dict,
-        description="Параметры генерации (temperature, max_tokens, ...)",
-    )
 
 
 class ExperimentRunResponse(BaseModel):
@@ -179,7 +214,7 @@ class ExperimentRunResponse(BaseModel):
     experiment_id: int = Field(description="ID эксперимента")
     provider: str = Field(description="Провайдер")
     model: str = Field(description="Модель")
-    parameters: dict = Field(description="Параметры генерации")
+    parameters: dict[str, object] = Field(description="Параметры генерации")
     status: ExperimentRunStatus = Field(description="Статус прогона")
     error: str | None = Field(description="Текст ошибки (если failed)")
     started_at: AwareDatetime | None = Field(description="Начат (UTC)")
@@ -187,9 +222,65 @@ class ExperimentRunResponse(BaseModel):
     created_at: AwareDatetime = Field(description="Создан (UTC)")
 
 
+class EvaluationResultResponse(BaseModel):
+    """Независимая оценка ответа по одному критерию."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    criterion: str
+    score: int = Field(ge=0, le=2)
+    evidence: dict[str, object]
+    comment: str
+
+
+class EvaluationResponse(BaseModel):
+    """Детерминированная оценка сохранённого вызова."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    llm_call_id: int
+    evaluator: str
+    summary: dict[str, object]
+    results: list[EvaluationResultResponse]
+    created_at: AwareDatetime
+
+
+class ExperimentRunDetailResponse(ExperimentRunResponse):
+    """Прогон вместе с вызовом модели и оценкой."""
+
+    call: LLMCallResponse | None
+    evaluation: EvaluationResponse | None
+
+
 class ExperimentDetailResponse(ExperimentResponse):
     """Эксперимент + прогоны."""
 
-    runs: list[ExperimentRunResponse] = Field(
+    runs: list[ExperimentRunDetailResponse] = Field(
         description="Прогоны эксперимента",
     )
+
+
+class ExperimentReportRun(BaseModel):
+    """Одна строка сравнительного отчёта."""
+
+    provider: str
+    model: str
+    actual_model: str | None
+    status: ExperimentRunStatus
+    error: str | None
+    response_text: str | None
+    latency_ms: int | None
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    evaluation: EvaluationResponse | None
+
+
+class ExperimentReportResponse(BaseModel):
+    """Сравнительный отчёт без непрозрачного общего балла."""
+
+    experiment_id: int
+    name: str
+    prompt_version_id: int
+    run_counts: dict[str, int]
+    runs: list[ExperimentReportRun]

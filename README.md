@@ -67,6 +67,9 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 | `POST` | `/ai/prompts` | Создать неизменяемую версию промпта |
 | `GET` | `/ai/prompts` | Версии промптов (`name`, `limit`, `offset`) |
 | `GET` | `/ai/prompts/{id}` | Карточка версии промпта |
+| `POST` | `/experiments` | Создать эксперимент со списком прогонов |
+| `GET` | `/experiments/{id}` | Статусы, ответы и оценки прогонов |
+| `GET` | `/experiments/{id}/report` | Сравнительный отчёт |
 
 Статусы инцидента: `open → in_progress → resolved → closed`, допускается
 `open ↔ closed`, `in_progress → open`, `resolved → in_progress`. Недопустимый
@@ -115,6 +118,7 @@ app/
   monitoring/    правила мониторинга и отклонения
   incidents/     инциденты: модели, сервис, API
   ai/            AI Gateway: контракты и провайдеры LLM
+  experiments/   запуск экспериментов, оценки и отчёты
 tests/           pytest, SQLite in-memory
 migrations/      Alembic
 docs/            документация
