@@ -101,7 +101,7 @@ def change_status(
     new_status: str,
     actor: str | None = None,
 ) -> Incident:
-    """Меняет статус с валидацией перехода и пишет событие."""
+    """Меняет статус и добавляет событие в сессию без commit."""
     if new_status == incident.status:
         return incident
 
@@ -135,16 +135,7 @@ def change_status(
             },
         )
     )
-    db.commit()
-    db.refresh(incident)
 
-    logger.info(
-        "incident_status_changed",
-        incident_id=incident.id,
-        from_status=old_status,
-        to_status=new_status,
-        actor=actor,
-    )
     return incident
 
 
@@ -154,7 +145,7 @@ def assign(
     assignee: str | None,
     actor: str | None = None,
 ) -> Incident:
-    """Назначает/снимает исполнителя с событием."""
+    """Назначает/снимает исполнителя и добавляет событие без commit."""
     old = incident.assigned_to
     if old == assignee:
         return incident
@@ -167,8 +158,6 @@ def assign(
             payload={"from": old, "to": assignee, "actor": actor or "system"},
         )
     )
-    db.commit()
-    db.refresh(incident)
     return incident
 
 

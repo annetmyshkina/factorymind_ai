@@ -1,7 +1,7 @@
 """Автоматическое создание инцидентов по отклонениям мониторинга."""
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.incidents.models import Incident
@@ -21,6 +21,23 @@ SEVERITY_BY_METRIC: dict[str, str] = {
 }
 
 DEFAULT_INCIDENT_SEVERITY = "medium"
+_ADVISORY_LOCK_NAMESPACE = 0x464D494E  # "FMIN" в пределах PostgreSQL int4
+
+
+def _lock_equipment(db: Session, equipment_id: int) -> None:
+    """Берёт PostgreSQL xact-lock для автоинцидентов одного оборудования."""
+    if db.get_bind().dialect.name != "postgresql":
+        return
+
+    db.execute(
+        text(
+            "SELECT pg_advisory_xact_lock(:lock_namespace, :equipment_id)",
+        ),
+        {
+            "lock_namespace": _ADVISORY_LOCK_NAMESPACE,
+            "equipment_id": equipment_id,
+        },
+    )
 
 
 def find_active_incident(
@@ -49,6 +66,10 @@ def ensure_incident_for_deviation(
     вместе с телеметрией вызывающей стороны.
     """
     db.flush()
+
+    # Транзакционная advisory-lock защищает окно, в котором активного инцидента
+    # ещё нет, и не конфликтует с FK-блокировками уже сохранённого отклонения.
+    _lock_equipment(db, deviation.equipment_id)
 
     incident = find_active_incident(db, deviation.equipment_id)
 

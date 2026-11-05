@@ -128,26 +128,42 @@ def update_incident(
 ) -> IncidentResponse:
     """Обновляет статус/исполнителя/severity."""
     incident = _load_incident(db, incident_id)
+    old_status = incident.status
 
-    if payload.severity is not None:
-        incident.severity = payload.severity
-        db.commit()
-
-    if "description" in payload.model_fields_set:
-        incident.description = payload.description
-        db.commit()
-
-    if "assigned_to" in payload.model_fields_set:
-        assign(db, incident, payload.assigned_to)
-
-    if payload.status is not None:
-        try:
+    try:
+        # Сначала проверяем и применяем переход статуса: при конфликте остальные
+        # поля запроса ещё не успеют изменить состояние сессии.
+        if payload.status is not None:
             change_status(db, incident, payload.status)
-        except InvalidTransitionError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(exc),
-            ) from exc
+
+        if payload.severity is not None:
+            incident.severity = payload.severity
+
+        if "description" in payload.model_fields_set:
+            incident.description = payload.description
+
+        if "assigned_to" in payload.model_fields_set:
+            assign(db, incident, payload.assigned_to)
+
+        db.commit()
+
+        if payload.status is not None and payload.status != old_status:
+            logger.info(
+                "incident_status_changed",
+                incident_id=incident.id,
+                from_status=old_status,
+                to_status=payload.status,
+                actor="system",
+            )
+    except InvalidTransitionError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except Exception:
+        db.rollback()
+        raise
 
     return _load_incident(db, incident_id)
 

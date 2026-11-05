@@ -1,15 +1,28 @@
 import json
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.incidents.automation import _lock_equipment
 from app.incidents.models import Incident, IncidentDeviation
 from app.monitoring.models import EquipmentDeviation, MonitoringRule
 from app.telemetry.models import EquipmentTelemetry
 from app.telemetry.mqtt.handler import handle_message
+
+
+def test_automatic_incident_uses_transaction_advisory_lock() -> None:
+    db = Mock(spec=Session)
+    db.get_bind.return_value.dialect.name = "postgresql"
+
+    _lock_equipment(db, equipment_id=42)
+
+    statement, parameters = db.execute.call_args.args
+    assert "pg_advisory_xact_lock" in str(statement)
+    assert parameters["equipment_id"] == 42
 
 
 def _create_rule(

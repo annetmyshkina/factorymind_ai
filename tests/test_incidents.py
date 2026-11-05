@@ -1,11 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
+from app.equipment.models import Equipment
 from app.incidents.models import Incident
+from app.incidents.router import update_incident
+from app.incidents.schemas import IncidentUpdate
 from app.monitoring.models import EquipmentDeviation
 from app.telemetry.models import EquipmentTelemetry
 
@@ -245,6 +249,50 @@ def test_invalid_transitions(
     assert response.status_code == 409
     # Отказ не должен частично менять состояние.
     assert client.get(url).json()["status"] == from_status
+
+
+def test_invalid_transition_rolls_back_other_patch_fields(
+    db_session: Session,
+) -> None:
+    equipment = Equipment(
+        code="ATOMIC-PATCH",
+        name="Atomic patch test",
+        equipment_type="test",
+        location="test",
+    )
+    db_session.add(equipment)
+    db_session.flush()
+
+    incident = Incident(
+        equipment_id=equipment.id,
+        title="Atomic patch test",
+        status="open",
+        severity="low",
+        description="before",
+        assigned_to="before",
+    )
+    db_session.add(incident)
+    db_session.commit()
+
+    payload = IncidentUpdate(
+        status="resolved",
+        severity="critical",
+        description="after",
+        assigned_to="after",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        update_incident(incident.id, payload, db_session)
+
+    assert exc_info.value.status_code == 409
+
+    db_session.expire_all()
+    saved = db_session.get(Incident, incident.id)
+    assert saved is not None
+    assert saved.status == "open"
+    assert saved.severity == "low"
+    assert saved.description == "before"
+    assert saved.assigned_to == "before"
 
 
 def test_same_status_is_noop(

@@ -86,6 +86,12 @@ jobs:
       - name: Check schema drift
         run: uv run alembic check
 
+      - name: Test concurrent incident automation
+        env:
+          POSTGRES_INTEGRATION: "1"
+          LOG_TO_FILES: "false"
+        run: uv run pytest tests/test_incident_concurrency.py
+
       - name: Verify rollback
         run: |
           uv run alembic downgrade base
