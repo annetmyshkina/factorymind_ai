@@ -59,14 +59,17 @@ def create_call(
         for message in payload.messages
     ]
 
-    call = execute_call(
-        db,
-        provider,
-        messages,
-        temperature=payload.temperature,
-        max_tokens=payload.max_tokens,
-        prompt_version=payload.prompt_version,
-    )
+    try:
+        call = execute_call(
+            db,
+            provider,
+            messages,
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens,
+            prompt_version=payload.prompt_version,
+        )
+    finally:
+        provider.close()
 
     if call.status == "error":
         status_code = (

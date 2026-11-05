@@ -14,7 +14,12 @@ from app.telemetry.mqtt.schemas import MQTTTelemetryMessage
 logger = structlog.get_logger(__name__)
 
 
-def handle_message(db: Session, payload: bytes) -> None:
+def handle_message(
+    db: Session,
+    payload: bytes,
+    *,
+    topic_equipment_code: str | None = None,
+) -> None:
     """Обрабатывает одно MQTT-сообщение."""
     try:
         raw = json.loads(payload)
@@ -26,6 +31,18 @@ def handle_message(db: Session, payload: bytes) -> None:
         message = MQTTTelemetryMessage.model_validate(raw)
     except ValidationError as exc:
         logger.warning("mqtt_invalid_schema", errors=exc.errors())
+        return
+
+    if (
+        topic_equipment_code is not None
+        and message.equipment_code != topic_equipment_code
+    ):
+        logger.warning(
+            "mqtt_equipment_code_mismatch",
+            topic_equipment_code=topic_equipment_code,
+            payload_equipment_code=message.equipment_code,
+            event_id=message.event_id,
+        )
         return
 
     if db.get(ProcessedMQTTEvent, message.event_id) is not None:

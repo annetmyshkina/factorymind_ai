@@ -437,6 +437,20 @@ def test_update_rejects_invalid_status(
     assert response.status_code == 422
 
 
+def test_update_rejects_assignee_longer_than_column(
+    client: TestClient,
+    equipment: dict,
+) -> None:
+    incident = _create_incident(client, equipment["id"])
+
+    response = client.patch(
+        f"/incidents/{incident['id']}",
+        json={"assigned_to": "x" * 101},
+    )
+
+    assert response.status_code == 422
+
+
 def test_get_incident_404(client: TestClient) -> None:
     response = client.get("/incidents/9999")
     assert response.status_code == 404

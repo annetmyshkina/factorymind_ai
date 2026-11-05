@@ -41,6 +41,7 @@ class IncidentUpdate(BaseModel):
     )
     assigned_to: str | None = Field(
         default=None,
+        max_length=100,
         description="Новый исполнитель",
     )
     severity: IncidentSeverity | None = Field(

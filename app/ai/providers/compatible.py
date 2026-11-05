@@ -114,3 +114,7 @@ class CompatibleProvider:
                 completion_tokens=optional_int(usage.get("completion_tokens")),
             ),
         )
+
+    def close(self) -> None:
+        """Закрывает HTTP-клиент провайдера."""
+        self._client.close()

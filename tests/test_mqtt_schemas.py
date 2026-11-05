@@ -76,3 +76,31 @@ def test_invalid_mqtt_message_is_not_persisted(db_session: Session) -> None:
     )
     assert telemetry_count == 0
     assert processed_count == 0
+
+
+def test_topic_and_payload_equipment_codes_must_match(
+    db_session: Session,
+) -> None:
+    equipment = Equipment(
+        code="MQTT-VALIDATION",
+        name="MQTT validation",
+        equipment_type="test",
+        location="test",
+    )
+    db_session.add(equipment)
+    db_session.commit()
+
+    handle_message(
+        db_session,
+        json.dumps(_payload()).encode(),
+        topic_equipment_code="OTHER-EQUIPMENT",
+    )
+
+    telemetry_count = db_session.scalar(
+        select(func.count()).select_from(EquipmentTelemetry),
+    )
+    processed_count = db_session.scalar(
+        select(func.count()).select_from(ProcessedMQTTEvent),
+    )
+    assert telemetry_count == 0
+    assert processed_count == 0

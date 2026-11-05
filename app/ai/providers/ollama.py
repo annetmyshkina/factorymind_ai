@@ -96,3 +96,7 @@ class OllamaProvider:
                 completion_tokens=optional_int(data.get("eval_count")),
             ),
         )
+
+    def close(self) -> None:
+        """Закрывает HTTP-клиент провайдера."""
+        self._client.close()

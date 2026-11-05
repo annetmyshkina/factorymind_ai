@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
             session_factory=SessionLocal,
             host=settings.mqtt_host,
             port=settings.mqtt_port,
+            topic=settings.mqtt_telemetry_topic,
         )
         subscriber.start()
         app.state.mqtt_client = subscriber

@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.ai.contracts import ChatMessage, LLMResponse, LLMUsage
 from app.ai.errors import LLMProviderError, LLMResponseError, LLMTimeoutError
 from app.ai.models import LLMCall
+from app.ai.router import create_call
+from app.ai.schemas import LLMCallCreate
 from app.core.config import Settings
 
 
@@ -24,6 +26,7 @@ class FakeProvider:
         self.response = response
         self.error = error
         self.calls: list[dict] = []
+        self.closed = False
 
     def chat(
         self,
@@ -45,6 +48,9 @@ class FakeProvider:
             raise self.error
         assert self.response is not None
         return self.response
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def _payload(**overrides) -> dict:
@@ -141,6 +147,7 @@ def test_create_call_success(
     assert provider.calls[0]["messages"] == [
         ChatMessage(role="user", content="Почему выросла температура?"),
     ]
+    assert provider.closed is True
 
     saved = db_session.scalar(select(LLMCall))
     assert saved is not None
@@ -168,6 +175,20 @@ def test_create_call_timeout_returns_504_and_saves(
     assert call is not None
     assert call.status == "error"
     assert call.error_type == "timeout"
+    assert provider.closed is True
+
+
+def test_create_call_closes_provider_after_unexpected_error(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = FakeProvider(error=RuntimeError("unexpected"))
+    _patch_provider(monkeypatch, provider)
+
+    with pytest.raises(RuntimeError, match="unexpected"):
+        create_call(LLMCallCreate.model_validate(_payload()), db_session)
+
+    assert provider.closed is True
 
 
 @pytest.mark.parametrize(
@@ -193,6 +214,7 @@ def test_create_call_provider_failure_returns_502(
     call = db_session.get(LLMCall, response.json()["detail"]["call_id"])
     assert call is not None
     assert call.error_type == expected_type
+    assert provider.closed is True
 
 
 def test_create_call_unknown_provider_returns_422(
