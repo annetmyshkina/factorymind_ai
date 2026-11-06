@@ -6,7 +6,13 @@ from typing import Any
 import httpx2
 
 from app.ai.contracts import ChatMessage, LLMResponse, LLMUsage
-from app.ai.errors import LLMProviderError, LLMResponseError, LLMTimeoutError
+from app.ai.errors import (
+    LLMProviderError,
+    LLMRateLimitError,
+    LLMRequestError,
+    LLMResponseError,
+    LLMTimeoutError,
+)
 from app.ai.providers._utils import elapsed_ms, optional_int
 
 
@@ -67,6 +73,17 @@ class CompatibleProvider:
         except httpx2.TimeoutException as exc:
             raise LLMTimeoutError(
                 "Провайдер не ответил за отведённое время",
+                provider=self.name,
+            ) from exc
+        except httpx2.HTTPStatusError as exc:
+            status_code = exc.response.status_code
+            error_class = LLMProviderError
+            if status_code == 429:
+                error_class = LLMRateLimitError
+            elif status_code != 408 and status_code < 500:
+                error_class = LLMRequestError
+            raise error_class(
+                f"Провайдер вернул HTTP {status_code}",
                 provider=self.name,
             ) from exc
         except httpx2.HTTPError as exc:

@@ -1,6 +1,7 @@
 """Модели AI: журнал вызовов, версии промптов, эксперименты."""
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy import (
     JSON,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,6 +31,11 @@ class LLMCall(Base):
             name="ck_llm_calls_status",
         ),
         Index("ix_llm_calls_created_at", "created_at"),
+        Index(
+            "ix_llm_calls_experiment_attempt",
+            "experiment_run_id",
+            "experiment_attempt",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -44,6 +51,14 @@ class LLMCall(Base):
     experiment_run_id: Mapped[int | None] = mapped_column(
         ForeignKey("experiment_runs.id", ondelete="SET NULL"),
         index=True,
+        nullable=True,
+    )
+    experiment_attempt: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    lease_token: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
         nullable=True,
     )
 
@@ -142,8 +157,28 @@ class ExperimentRun(Base):
     __tablename__ = "experiment_runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'running', 'succeeded', 'failed')",
+            "status IN ('pending', 'running', 'completed', 'failed')",
             name="ck_experiment_runs_status",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND max_attempts > 0 AND attempt_count <= max_attempts",
+            name="ck_experiment_runs_attempts",
+        ),
+        CheckConstraint(
+            "(status = 'running' AND worker_id IS NOT NULL "
+            "AND lease_token IS NOT NULL AND lease_expires_at IS NOT NULL) "
+            "OR (status <> 'running' AND worker_id IS NULL "
+            "AND lease_token IS NULL AND lease_expires_at IS NULL)",
+            name="ck_experiment_runs_lease_state",
+        ),
+        CheckConstraint(
+            "(status IN ('pending', 'running') AND finished_at IS NULL) "
+            "OR (status IN ('completed', 'failed') AND finished_at IS NOT NULL)",
+            name="ck_experiment_runs_finished_state",
+        ),
+        CheckConstraint(
+            "status <> 'completed' OR final_call_id IS NOT NULL",
+            name="ck_experiment_runs_completed_call",
         ),
         UniqueConstraint(
             "experiment_id",
@@ -152,6 +187,16 @@ class ExperimentRun(Base):
             name="uq_experiment_runs_exp_provider_model",
         ),
         Index("ix_experiment_runs_status", "status"),
+        Index(
+            "ix_experiment_runs_status_retry",
+            "status",
+            "next_retry_at",
+        ),
+        Index(
+            "ix_experiment_runs_status_lease",
+            "status",
+            "lease_expires_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -178,6 +223,41 @@ class ExperimentRun(Base):
         nullable=False,
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    worker_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+    )
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(),
+        nullable=True,
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    max_attempts: Mapped[int] = mapped_column(
+        Integer,
+        default=3,
+        server_default="3",
+        nullable=False,
+    )
+    next_retry_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(),
+        nullable=True,
+    )
+    final_call_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "llm_calls.id",
+            name="fk_experiment_runs_final_call_id",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
 
     started_at: Mapped[datetime | None] = mapped_column(
         UTCDateTime(),

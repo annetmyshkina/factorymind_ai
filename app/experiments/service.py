@@ -1,15 +1,9 @@
-"""Создание, выполнение и чтение экспериментов."""
+"""Создание и чтение экспериментов."""
 
-import json
-from collections.abc import Callable
-from datetime import UTC, datetime
-
-import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.ai.contracts import ChatMessage
 from app.ai.models import (
     Evaluation,
     EvaluationResult,
@@ -18,8 +12,6 @@ from app.ai.models import (
     LLMCall,
     PromptVersion,
 )
-from app.ai.providers import build_provider
-from app.ai.providers.base import LLMProvider
 from app.ai.schemas import (
     EvaluationResponse,
     EvaluationResultResponse,
@@ -32,14 +24,7 @@ from app.ai.schemas import (
     ExperimentRunResponse,
     LLMCallResponse,
 )
-from app.ai.service import execute_call
-from app.core.config import Settings, settings
-from app.core.database import SessionLocal
-from app.experiments.evaluation import create_evaluation
-
-logger = structlog.get_logger(__name__)
-
-ProviderFactory = Callable[..., LLMProvider]
+from app.core.config import settings
 
 
 class PromptVersionNotFoundError(LookupError):
@@ -50,7 +35,12 @@ class ExperimentConflictError(ValueError):
     """Эксперимент нарушает ограничение уникальности."""
 
 
-def create_experiment(db: Session, payload: ExperimentCreate) -> Experiment:
+def create_experiment(
+    db: Session,
+    payload: ExperimentCreate,
+    *,
+    max_attempts: int = settings.experiment_max_attempts,
+) -> Experiment:
     """Атомарно создаёт эксперимент и все запрошенные прогоны."""
     if db.get(PromptVersion, payload.prompt_version_id) is None:
         raise PromptVersionNotFoundError
@@ -75,6 +65,7 @@ def create_experiment(db: Session, payload: ExperimentCreate) -> Experiment:
                 provider=requested_run.provider,
                 model=requested_run.model,
                 parameters=requested_run.parameters.model_dump(mode="json"),
+                max_attempts=max_attempts,
             ),
         )
 
@@ -115,17 +106,24 @@ def get_experiment_detail(
         ),
     )
     run_ids = [run.id for run in runs]
-    calls: dict[int, LLMCall] = {}
+    calls_by_run: dict[int, list[LLMCall]] = {run_id: [] for run_id in run_ids}
     if run_ids:
         for call in db.scalars(
             select(LLMCall)
             .where(LLMCall.experiment_run_id.in_(run_ids))
-            .order_by(LLMCall.id.desc()),
+            .order_by(LLMCall.id),
         ):
             if call.experiment_run_id is not None:
-                calls.setdefault(call.experiment_run_id, call)
+                calls_by_run[call.experiment_run_id].append(call)
 
-    call_ids = [call.id for call in calls.values()]
+    final_calls = {
+        run.id: next(
+            (call for call in calls_by_run[run.id] if call.id == run.final_call_id),
+            None,
+        )
+        for run in runs
+    }
+    call_ids = [call.id for call in final_calls.values() if call is not None]
     evaluations: dict[int, Evaluation] = {}
     if call_ids:
         evaluations = {
@@ -149,13 +147,17 @@ def get_experiment_detail(
 
     run_responses: list[ExperimentRunDetailResponse] = []
     for run in runs:
-        call = calls.get(run.id)
+        call = final_calls[run.id]
         evaluation = evaluations.get(call.id) if call is not None else None
         run_data = ExperimentRunResponse.model_validate(run).model_dump()
         run_responses.append(
             ExperimentRunDetailResponse(
                 **run_data,
                 call=LLMCallResponse.model_validate(call) if call else None,
+                attempts=[
+                    LLMCallResponse.model_validate(item)
+                    for item in calls_by_run[run.id]
+                ],
                 evaluation=(
                     _evaluation_response(
                         evaluation,
@@ -177,7 +179,7 @@ def get_experiment_report(
 ) -> ExperimentReportResponse:
     """Строит сравнительный отчёт, сохраняя оценки по критериям раздельно."""
     detail = get_experiment_detail(db, experiment)
-    counts = {status: 0 for status in ("pending", "running", "succeeded", "failed")}
+    counts = {status: 0 for status in ("pending", "running", "completed", "failed")}
     report_runs: list[ExperimentReportRun] = []
 
     for run in detail.runs:
@@ -204,136 +206,3 @@ def get_experiment_report(
         run_counts=counts,
         runs=report_runs,
     )
-
-
-def _fail_run(db: Session, run_id: int, error: Exception) -> None:
-    db.rollback()
-    run = db.get(ExperimentRun, run_id)
-    if run is None:
-        return
-    run.status = "failed"
-    run.error = str(error)
-    run.finished_at = datetime.now(UTC)
-    db.commit()
-    logger.warning(
-        "experiment_run_failed",
-        experiment_run_id=run_id,
-        error_type=type(error).__name__,
-    )
-
-
-def _execute_run(
-    db: Session,
-    experiment: Experiment,
-    prompt: PromptVersion,
-    run: ExperimentRun,
-    *,
-    provider_factory: ProviderFactory,
-    provider_settings: Settings,
-) -> None:
-    run_id = run.id
-    run.status = "running"
-    run.started_at = datetime.now(UTC)
-    run.error = None
-    db.commit()
-
-    provider: LLMProvider | None = None
-    try:
-        provider = provider_factory(
-            run.provider,
-            provider_settings,
-            model=run.model,
-        )
-        messages = [
-            ChatMessage(role="system", content=prompt.content),
-            ChatMessage(
-                role="user",
-                content=json.dumps(
-                    experiment.scenario,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ),
-            ),
-        ]
-        max_tokens_value = run.parameters.get("max_tokens")
-        call = execute_call(
-            db,
-            provider,
-            messages,
-            temperature=float(run.parameters.get("temperature", 0.0)),
-            max_tokens=(
-                int(max_tokens_value) if max_tokens_value is not None else None
-            ),
-            prompt_version=prompt.version,
-            experiment_run_id=run.id,
-        )
-
-        if call.status == "error":
-            run.status = "failed"
-            run.error = call.error_message
-        else:
-            create_evaluation(db, call, experiment.criteria)
-            run.status = "succeeded"
-            run.error = None
-        run.finished_at = datetime.now(UTC)
-        db.commit()
-        logger.info(
-            "experiment_run_finished",
-            experiment_run_id=run.id,
-            status=run.status,
-        )
-    except Exception as exc:
-        _fail_run(db, run_id, exc)
-    finally:
-        if provider is not None:
-            try:
-                provider.close()
-            except Exception:
-                logger.exception(
-                    "experiment_provider_close_failed",
-                    experiment_run_id=run_id,
-                )
-
-
-def execute_experiment(
-    db: Session,
-    experiment_id: int,
-    *,
-    provider_factory: ProviderFactory = build_provider,
-    provider_settings: Settings = settings,
-) -> None:
-    """Выполняет ожидающие прогоны независимо, сохраняя частичные результаты."""
-    experiment = db.get(Experiment, experiment_id)
-    if experiment is None:
-        logger.warning("experiment_not_found", experiment_id=experiment_id)
-        return
-    prompt = db.get(PromptVersion, experiment.prompt_version_id)
-    if prompt is None:
-        logger.error("experiment_prompt_missing", experiment_id=experiment_id)
-        return
-
-    runs = list(
-        db.scalars(
-            select(ExperimentRun)
-            .where(
-                ExperimentRun.experiment_id == experiment_id,
-                ExperimentRun.status == "pending",
-            )
-            .order_by(ExperimentRun.id),
-        ),
-    )
-    for run in runs:
-        _execute_run(
-            db,
-            experiment,
-            prompt,
-            run,
-            provider_factory=provider_factory,
-            provider_settings=provider_settings,
-        )
-
-
-def run_experiment_in_background(experiment_id: int) -> None:
-    """Точка входа фоновой задачи этапа 4; durable worker относится к этапу 5."""
-    with SessionLocal() as db:
-        execute_experiment(db, experiment_id)

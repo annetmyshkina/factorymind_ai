@@ -7,6 +7,8 @@ import pytest
 from app.ai.contracts import ChatMessage
 from app.ai.errors import (
     LLMProviderError,
+    LLMRateLimitError,
+    LLMRequestError,
     LLMResponseError,
     LLMTimeoutError,
     ProviderNotConfiguredError,
@@ -226,6 +228,34 @@ def test_compatible_timeout_maps_to_domain_error() -> None:
 
     with pytest.raises(LLMTimeoutError):
         provider.chat(MESSAGES)
+
+
+@pytest.mark.parametrize(
+    ("status_code", "error_type", "retryable"),
+    [
+        (400, LLMRequestError, False),
+        (429, LLMRateLimitError, True),
+        (503, LLMProviderError, True),
+    ],
+)
+def test_compatible_classifies_http_errors_for_retry(
+    status_code: int,
+    error_type: type[LLMProviderError],
+    retryable: bool,
+) -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status_code, json={"error": "boom"})
+
+    provider = CompatibleProvider(
+        base_url="https://api.test/v1",
+        model="gpt-4o-mini",
+        transport=_mock(handler),
+    )
+
+    with pytest.raises(error_type) as exc_info:
+        provider.chat(MESSAGES)
+
+    assert exc_info.value.retryable is retryable
 
 
 def test_compatible_missing_choices_maps_to_response_error() -> None:

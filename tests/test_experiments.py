@@ -2,10 +2,10 @@ import json
 from typing import Any
 
 import pytest
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.ai.contracts import ChatMessage, LLMResponse, LLMUsage
 from app.ai.errors import LLMTimeoutError
@@ -20,6 +20,7 @@ from app.ai.models import (
 from app.ai.schemas import ExperimentCreate
 from app.core.config import Settings
 from app.experiments.evaluation import evaluate_criterion
+from app.experiments.queue import process_next_run
 from app.experiments.router import (
     create_experiment_endpoint,
     experiment_report_endpoint,
@@ -28,10 +29,8 @@ from app.experiments.router import (
 from app.experiments.service import (
     PromptVersionNotFoundError,
     create_experiment,
-    execute_experiment,
     get_experiment_detail,
     get_experiment_report,
-    run_experiment_in_background,
 )
 
 
@@ -77,6 +76,14 @@ class FakeProvider:
 
 def _settings() -> Settings:
     return Settings(_env_file=None, postgres_password="test")
+
+
+def _session_factory(db: Session):
+    return sessionmaker(
+        bind=db.get_bind(),
+        autoflush=False,
+        expire_on_commit=False,
+    )
 
 
 def _prompt(db: Session) -> PromptVersion:
@@ -196,23 +203,18 @@ def test_create_experiment_rejects_missing_prompt(
     assert count == 0
 
 
-def test_create_endpoint_schedules_execution_after_atomic_create(
+def test_create_endpoint_leaves_execution_to_worker(
     db_session: Session,
 ) -> None:
     prompt = _prompt(db_session)
-    background_tasks = BackgroundTasks()
 
     response = create_experiment_endpoint(
         _payload(prompt.id),
-        background_tasks,
         db_session,
     )
 
     assert len(response.runs) == 2
-    assert len(background_tasks.tasks) == 1
-    task = background_tasks.tasks[0]
-    assert task.func is run_experiment_in_background
-    assert task.args == (response.id,)
+    assert {run.status for run in response.runs} == {"pending"}
 
 
 def test_create_endpoint_maps_missing_prompt_to_404(
@@ -221,7 +223,6 @@ def test_create_endpoint_maps_missing_prompt_to_404(
     with pytest.raises(HTTPException) as exc_info:
         create_experiment_endpoint(
             _payload(999),
-            BackgroundTasks(),
             db_session,
         )
 
@@ -241,7 +242,11 @@ def test_execute_experiment_preserves_partial_results(
     db_session: Session,
 ) -> None:
     prompt = _prompt(db_session)
-    experiment = create_experiment(db_session, _payload(prompt.id))
+    experiment = create_experiment(
+        db_session,
+        _payload(prompt.id),
+        max_attempts=1,
+    )
     providers = {
         "model-ok": FakeProvider(
             name="ollama",
@@ -258,16 +263,24 @@ def test_execute_experiment_preserves_partial_results(
     def provider_factory(name, settings, *, model):
         return providers[model]
 
-    execute_experiment(
-        db_session,
-        experiment.id,
+    factory = _session_factory(db_session)
+    process_next_run(
+        factory,
+        "worker-test",
+        provider_factory=provider_factory,
+        provider_settings=_settings(),
+    )
+    process_next_run(
+        factory,
+        "worker-test",
         provider_factory=provider_factory,
         provider_settings=_settings(),
     )
 
+    db_session.expire_all()
     detail = get_experiment_detail(db_session, experiment)
     successful, failed = detail.runs
-    assert successful.status == "succeeded"
+    assert successful.status == "completed"
     assert successful.call is not None
     assert successful.evaluation is not None
     assert successful.evaluation.summary == {
@@ -288,6 +301,7 @@ def test_execute_experiment_preserves_partial_results(
     assert failed.error == "provider timed out"
     assert failed.call is not None
     assert failed.call.status == "error"
+    assert len(failed.attempts) == 1
     assert failed.evaluation is None
     assert all(provider.closed for provider in providers.values())
 
@@ -310,7 +324,11 @@ def test_provider_setup_failure_does_not_stop_other_runs(
     db_session: Session,
 ) -> None:
     prompt = _prompt(db_session)
-    experiment = create_experiment(db_session, _payload(prompt.id))
+    create_experiment(
+        db_session,
+        _payload(prompt.id),
+        max_attempts=1,
+    )
     successful = FakeProvider(
         name="compatible",
         model="model-timeout",
@@ -322,17 +340,25 @@ def test_provider_setup_failure_does_not_stop_other_runs(
             raise ValueError("provider is not configured")
         return successful
 
-    execute_experiment(
-        db_session,
-        experiment.id,
+    factory = _session_factory(db_session)
+    process_next_run(
+        factory,
+        "worker-test",
+        provider_factory=provider_factory,
+        provider_settings=_settings(),
+    )
+    process_next_run(
+        factory,
+        "worker-test",
         provider_factory=provider_factory,
         provider_settings=_settings(),
     )
 
+    db_session.expire_all()
     runs = list(
         db_session.scalars(select(ExperimentRun).order_by(ExperimentRun.id)),
     )
-    assert [run.status for run in runs] == ["failed", "succeeded"]
+    assert [run.status for run in runs] == ["failed", "completed"]
     assert runs[0].error == "provider is not configured"
     assert successful.closed is True
 
@@ -354,22 +380,23 @@ def test_report_keeps_criterion_scores_separate(
         response_text="Temperature is high. Inspect the cooling system.",
     )
 
-    execute_experiment(
-        db_session,
-        experiment.id,
+    process_next_run(
+        _session_factory(db_session),
+        "worker-test",
         provider_factory=lambda *args, **kwargs: provider,
         provider_settings=_settings(),
     )
+    db_session.expire_all()
     report = get_experiment_report(db_session, experiment)
     endpoint_detail = get_experiment_endpoint(experiment.id, db_session)
     endpoint_report = experiment_report_endpoint(experiment.id, db_session)
 
-    assert endpoint_detail.runs[0].status == "succeeded"
+    assert endpoint_detail.runs[0].status == "completed"
     assert endpoint_report == report
     assert report.run_counts == {
         "pending": 0,
         "running": 0,
-        "succeeded": 1,
+        "completed": 1,
         "failed": 0,
     }
     assert report.runs[0].latency_ms == 25

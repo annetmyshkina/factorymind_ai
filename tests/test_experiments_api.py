@@ -35,13 +35,7 @@ def _payload(prompt_version_id: int) -> dict:
 
 def test_experiment_api_create_get_and_report(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    scheduled: list[int] = []
-    monkeypatch.setattr(
-        "app.experiments.router.run_experiment_in_background",
-        scheduled.append,
-    )
     prompt_id = _create_prompt(client)
 
     response = client.post("/experiments", json=_payload(prompt_id))
@@ -49,7 +43,6 @@ def test_experiment_api_create_get_and_report(
     assert response.status_code == 201, response.text
     created = response.json()
     assert [run["status"] for run in created["runs"]] == ["pending", "pending"]
-    assert scheduled == [created["id"]]
 
     detail = client.get(f"/experiments/{created['id']}")
     assert detail.status_code == 200
@@ -60,7 +53,7 @@ def test_experiment_api_create_get_and_report(
     assert report.json()["run_counts"] == {
         "pending": 2,
         "running": 0,
-        "succeeded": 0,
+        "completed": 0,
         "failed": 0,
     }
 

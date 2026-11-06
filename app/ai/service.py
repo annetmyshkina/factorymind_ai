@@ -1,6 +1,7 @@
 """Выполнение вызовов LLM с записью в журнал."""
 
 import time
+from uuid import UUID
 
 import structlog
 from sqlalchemy.orm import Session
@@ -33,6 +34,8 @@ def execute_call(
     max_tokens: int | None = None,
     prompt_version: str | None = None,
     experiment_run_id: int | None = None,
+    experiment_attempt: int | None = None,
+    lease_token: UUID | None = None,
 ) -> LLMCall:
     """Выполняет вызов провайдера и сохраняет его в журнал.
 
@@ -53,6 +56,8 @@ def execute_call(
             model=provider.model,
             prompt_version=prompt_version,
             experiment_run_id=experiment_run_id,
+            experiment_attempt=experiment_attempt,
+            lease_token=lease_token,
             request_messages=_messages_payload(messages),
             parameters=_parameters(temperature, max_tokens),
             status="error",
@@ -77,6 +82,8 @@ def execute_call(
         model=response.model,
         prompt_version=prompt_version,
         experiment_run_id=experiment_run_id,
+        experiment_attempt=experiment_attempt,
+        lease_token=lease_token,
         request_messages=_messages_payload(messages),
         parameters=_parameters(temperature, max_tokens),
         response_text=response.content,

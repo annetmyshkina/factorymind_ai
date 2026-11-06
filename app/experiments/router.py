@@ -1,6 +1,6 @@
 """API экспериментов, результатов и сравнительных отчётов."""
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.ai.models import Experiment
@@ -16,7 +16,6 @@ from app.experiments.service import (
     create_experiment,
     get_experiment_detail,
     get_experiment_report,
-    run_experiment_in_background,
 )
 
 router = APIRouter(prefix="/experiments", tags=["Experiments"])
@@ -29,10 +28,9 @@ router = APIRouter(prefix="/experiments", tags=["Experiments"])
 )
 def create_experiment_endpoint(
     payload: ExperimentCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> ExperimentDetailResponse:
-    """Атомарно создаёт эксперимент и запускает его после отправки ответа."""
+    """Атомарно создаёт эксперимент; прогоны заберёт durable worker."""
     try:
         experiment = create_experiment(db, payload)
     except PromptVersionNotFoundError:
@@ -46,9 +44,7 @@ def create_experiment_endpoint(
             detail="Конфликт прогонов эксперимента",
         ) from None
 
-    response = get_experiment_detail(db, experiment)
-    background_tasks.add_task(run_experiment_in_background, experiment.id)
-    return response
+    return get_experiment_detail(db, experiment)
 
 
 @router.get(

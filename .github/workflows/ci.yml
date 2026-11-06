@@ -96,3 +96,47 @@ jobs:
         run: |
           uv run alembic downgrade base
           uv run alembic upgrade head
+
+  experiment-worker-postgres:
+    name: Experiment worker on isolated PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: factorymind
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: factorymind_worker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U factorymind -d factorymind_worker_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_USER: factorymind
+      POSTGRES_PASSWORD: ci
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: factorymind_worker_test
+      POSTGRES_INTEGRATION: "1"
+      LOG_TO_FILES: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-groups --locked
+
+      - name: Apply migrations to isolated database
+        run: uv run alembic upgrade head
+
+      - name: Test concurrent claims and lease recovery
+        run: uv run pytest tests/test_experiment_worker_postgres.py

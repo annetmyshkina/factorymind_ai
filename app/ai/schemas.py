@@ -61,6 +61,8 @@ class LLMCallResponse(BaseModel):
     provider: str = Field(description="Провайдер")
     model: str = Field(description="Фактическая модель")
     prompt_version: str | None = Field(description="Версия промпта")
+    experiment_run_id: int | None = Field(description="ID прогона эксперимента")
+    experiment_attempt: int | None = Field(description="Номер попытки прогона")
     request_messages: list[dict[str, str]] = Field(
         description="Входные сообщения",
     )
@@ -111,7 +113,7 @@ class PromptVersionResponse(BaseModel):
 # ---------- Эксперименты (4.2) ----------
 
 
-ExperimentRunStatus = Literal["pending", "running", "succeeded", "failed"]
+ExperimentRunStatus = Literal["pending", "running", "completed", "failed"]
 
 
 class GenerationParameters(BaseModel):
@@ -217,6 +219,12 @@ class ExperimentRunResponse(BaseModel):
     parameters: dict[str, object] = Field(description="Параметры генерации")
     status: ExperimentRunStatus = Field(description="Статус прогона")
     error: str | None = Field(description="Текст ошибки (если failed)")
+    attempt_count: int = Field(description="Количество начатых попыток")
+    max_attempts: int = Field(description="Максимум попыток")
+    next_retry_at: AwareDatetime | None = Field(
+        description="Время следующей попытки (UTC)",
+    )
+    final_call_id: int | None = Field(description="ID итогового LLM-вызова")
     started_at: AwareDatetime | None = Field(description="Начат (UTC)")
     finished_at: AwareDatetime | None = Field(description="Завершён (UTC)")
     created_at: AwareDatetime = Field(description="Создан (UTC)")
@@ -250,6 +258,9 @@ class ExperimentRunDetailResponse(ExperimentRunResponse):
     """Прогон вместе с вызовом модели и оценкой."""
 
     call: LLMCallResponse | None
+    attempts: list[LLMCallResponse] = Field(
+        description="Сохранённые LLM-вызовы всех попыток",
+    )
     evaluation: EvaluationResponse | None
 
 
