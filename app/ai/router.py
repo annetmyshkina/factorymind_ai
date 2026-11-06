@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.ai.contracts import ChatMessage
 from app.ai.errors import ProviderNotConfiguredError, UnknownProviderError
 from app.ai.models import LLMCall, PromptVersion
-from app.ai.providers import build_provider
+from app.ai.providers.factory import build_provider
 from app.ai.schemas import (
     LLMCallCreate,
     LLMCallResponse,

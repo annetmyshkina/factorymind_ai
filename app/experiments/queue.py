@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from app.ai.contracts import ChatMessage
 from app.ai.errors import ProviderNotConfiguredError, UnknownProviderError
 from app.ai.models import Experiment, ExperimentRun, LLMCall, PromptVersion
-from app.ai.providers import build_provider
 from app.ai.providers.base import LLMProvider
+from app.ai.providers.factory import build_provider
 from app.ai.service import execute_call
 from app.core.config import Settings, settings
 from app.experiments.evaluation import create_evaluation

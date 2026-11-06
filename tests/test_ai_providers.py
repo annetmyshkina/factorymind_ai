@@ -14,8 +14,8 @@ from app.ai.errors import (
     ProviderNotConfiguredError,
     UnknownProviderError,
 )
-from app.ai.providers import build_provider
 from app.ai.providers.compatible import CompatibleProvider
+from app.ai.providers.factory import build_provider
 from app.ai.providers.ollama import OllamaProvider
 from app.core.config import Settings
 
