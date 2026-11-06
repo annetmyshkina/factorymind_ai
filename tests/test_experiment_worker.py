@@ -15,6 +15,7 @@ from app.ai.models import (
     LLMCall,
     PromptVersion,
 )
+from app.ai.providers.base import LLMProvider
 from app.ai.schemas import ExperimentCreate
 from app.core.config import Settings
 from app.experiments import queue, worker
@@ -28,7 +29,7 @@ from app.experiments.queue import (
 from app.experiments.service import create_experiment, get_experiment_detail
 
 
-class FakeProvider:
+class FakeProvider(LLMProvider):
     name = "ollama"
     model = "worker-model"
 

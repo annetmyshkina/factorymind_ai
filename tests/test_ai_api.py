@@ -8,12 +8,13 @@ from sqlalchemy.orm import Session
 from app.ai.contracts import ChatMessage, LLMResponse, LLMUsage
 from app.ai.errors import LLMProviderError, LLMResponseError, LLMTimeoutError
 from app.ai.models import LLMCall
+from app.ai.providers.base import LLMProvider
 from app.ai.router import create_call
 from app.ai.schemas import LLMCallCreate
 from app.core.config import Settings
 
 
-class FakeProvider:
+class FakeProvider(LLMProvider):
     name = "compatible"
     model = "fake-default"
 

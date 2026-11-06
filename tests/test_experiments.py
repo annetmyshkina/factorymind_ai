@@ -17,6 +17,7 @@ from app.ai.models import (
     LLMCall,
     PromptVersion,
 )
+from app.ai.providers.base import LLMProvider
 from app.ai.schemas import ExperimentCreate
 from app.core.config import Settings
 from app.experiments.evaluation import evaluate_criterion
@@ -34,7 +35,7 @@ from app.experiments.service import (
 )
 
 
-class FakeProvider:
+class FakeProvider(LLMProvider):
     def __init__(
         self,
         *,

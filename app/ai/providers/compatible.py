@@ -14,9 +14,10 @@ from app.ai.errors import (
     LLMTimeoutError,
 )
 from app.ai.providers._utils import elapsed_ms, optional_int
+from app.ai.providers.base import LLMProvider
 
 
-class CompatibleProvider:
+class CompatibleProvider(LLMProvider):
     """Вызывает модель через Chat Completions-совместимый /chat/completions.
 
     Подходит для провайдеров (например, VseGPT) и для локальных

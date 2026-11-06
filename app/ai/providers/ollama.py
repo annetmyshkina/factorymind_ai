@@ -14,9 +14,10 @@ from app.ai.errors import (
     LLMTimeoutError,
 )
 from app.ai.providers._utils import elapsed_ms, optional_int
+from app.ai.providers.base import LLMProvider
 
 
-class OllamaProvider:
+class OllamaProvider(LLMProvider):
     """Вызывает модель через Ollama HTTP API."""
 
     name = "ollama"

@@ -4,6 +4,7 @@ from sqlalchemy import select
 from app.ai.contracts import ChatMessage, LLMResponse, LLMUsage
 from app.ai.errors import LLMResponseError, LLMTimeoutError
 from app.ai.models import LLMCall
+from app.ai.providers.base import LLMProvider
 from app.ai.service import execute_call
 
 MESSAGES = [
@@ -12,7 +13,7 @@ MESSAGES = [
 ]
 
 
-class FakeProvider:
+class FakeProvider(LLMProvider):
     name = "fake"
     model = "fake-default"
 
@@ -46,6 +47,9 @@ class FakeProvider:
             raise self.error
         assert self.response is not None
         return self.response
+
+    def close(self) -> None:
+        """У тестового провайдера нет внешних ресурсов."""
 
 
 def test_execute_call_saves_successful_call(db_session) -> None:
