@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 from app.ai import models as ai_models  # noqa: F401
 from app.core.database import Base, get_db
 from app.equipment import models as equipment_models  # noqa: F401
+from app.knowledge import models as knowledge_models  # noqa: F401
 from app.main import app
 from app.monitoring import models as monitoring_models  # noqa: F401
 from app.telemetry import models as telemetry_models  # noqa: F401

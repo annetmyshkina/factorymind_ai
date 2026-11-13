@@ -12,6 +12,7 @@ dependencies = [
     "paho-mqtt>=2.1.0",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings",
+    "python-multipart",
     "sqlalchemy>=2.1.5",
     "structlog>=26.1.0",
     "uvicorn[standard]",

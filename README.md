@@ -70,6 +70,13 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 | `POST` | `/experiments` | Создать эксперимент со списком прогонов |
 | `GET` | `/experiments/{id}` | Статусы, ответы и оценки прогонов |
 | `GET` | `/experiments/{id}/report` | Сравнительный отчёт |
+| `POST` | `/knowledge/documents` | Создать карточку технического документа |
+| `GET` | `/knowledge/documents` | Каталог и фильтр применимости к оборудованию |
+| `GET` | `/knowledge/documents/{id}` | Версии и области применения документа |
+| `POST` | `/knowledge/documents/{id}/versions` | Загрузить PDF, TXT или Markdown до 10 МБ |
+| `GET` | `/knowledge/versions/{id}/download` | Скачать исходный файл |
+| `POST` | `/knowledge/versions/{id}/applicability` | Связать версию с оборудованием или типом |
+| `DELETE` | `/knowledge/applicability/{id}` | Удалить ошибочную связь применимости |
 
 Статусы инцидента: `open → in_progress → resolved → closed`, допускается
 `open ↔ closed`, `in_progress → open`, `resolved → in_progress`. Недопустимый
@@ -119,6 +126,7 @@ app/
   incidents/     инциденты: модели, сервис, API
   ai/            AI Gateway: контракты и провайдеры LLM
   experiments/   запуск экспериментов, оценки и отчёты
+  knowledge/     приём, версии и применимость технических документов
 tests/           pytest, SQLite in-memory
 migrations/      Alembic
 docs/            документация

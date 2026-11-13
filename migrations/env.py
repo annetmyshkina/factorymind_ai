@@ -6,6 +6,7 @@ from app.ai import models as ai_models  # noqa: F401
 from app.core.database import Base, engine
 from app.equipment import models as equipment_models  # noqa: F401
 from app.incidents import models as incidents_models  # noqa: F401
+from app.knowledge import models as knowledge_models  # noqa: F401
 from app.monitoring.models import EquipmentDeviation, MonitoringRule  # noqa: F401
 from app.telemetry import models as telemetry_models  # noqa: F401
 
