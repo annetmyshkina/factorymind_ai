@@ -29,6 +29,12 @@ DOCUMENT_TYPES = (
 )
 VERSION_STATUSES = ("uploaded", "processing", "ready", "failed")
 
+_chunk_search_index = Index(
+    "ix_knowledge_document_chunks_search",
+    text("to_tsvector('simple', content)"),
+    postgresql_using="gin",
+).ddl_if(dialect="postgresql")
+
 
 class KnowledgeDocument(Base):
     """Логический технический документ с неизменяемыми версиями."""
@@ -82,6 +88,15 @@ class KnowledgeDocumentVersion(Base):
             "length(checksum_sha256) = 64",
             name="ck_knowledge_document_versions_checksum",
         ),
+        CheckConstraint(
+            "(status = 'failed' AND processing_error IS NOT NULL) "
+            "OR (status <> 'failed' AND processing_error IS NULL)",
+            name="ck_knowledge_document_versions_error_state",
+        ),
+        CheckConstraint(
+            "status <> 'ready' OR processed_at IS NOT NULL",
+            name="ck_knowledge_document_versions_processed_state",
+        ),
         UniqueConstraint(
             "document_id",
             "version",
@@ -123,11 +138,80 @@ class KnowledgeDocumentVersion(Base):
         nullable=False,
     )
     processing_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(),
+        nullable=True,
+    )
     is_current: Mapped[bool] = mapped_column(
         default=True,
         server_default=text("true"),
         nullable=False,
     )
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class KnowledgeDocumentChunk(Base):
+    """Воспроизводимый фрагмент извлечённого текста для retrieval."""
+
+    __tablename__ = "knowledge_document_chunks"
+    __table_args__ = (
+        CheckConstraint(
+            "chunk_index >= 0",
+            name="ck_knowledge_document_chunks_index",
+        ),
+        CheckConstraint(
+            "length(content) > 0",
+            name="ck_knowledge_document_chunks_content",
+        ),
+        CheckConstraint(
+            "length(checksum_sha256) = 64",
+            name="ck_knowledge_document_chunks_checksum",
+        ),
+        CheckConstraint(
+            "start_offset >= 0 AND end_offset > start_offset",
+            name="ck_knowledge_document_chunks_offsets",
+        ),
+        CheckConstraint(
+            "(page_start IS NULL AND page_end IS NULL) "
+            "OR (page_start > 0 AND page_end >= page_start)",
+            name="ck_knowledge_document_chunks_pages",
+        ),
+        UniqueConstraint(
+            "document_version_id",
+            "chunk_index",
+            name="uq_knowledge_document_chunks_version_index",
+        ),
+        Index(
+            "ix_knowledge_document_chunks_version",
+            "document_version_id",
+            "chunk_index",
+        ),
+        _chunk_search_index,
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_version_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_document_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    chunking_version: Mapped[str] = mapped_column(
+        String(30),
+        default="paragraph-v1",
+        server_default="paragraph-v1",
+        nullable=False,
+    )
+    page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    start_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(),
         default=lambda: datetime.now(UTC),

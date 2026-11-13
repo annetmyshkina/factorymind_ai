@@ -165,3 +165,119 @@ def test_knowledge_api_rejects_unknown_and_duplicate_applicability(
     assert client.post(path, json={"equipment_id": equipment["id"]}).status_code == 201
     duplicate = client.post(path, json={"equipment_id": equipment["id"]})
     assert duplicate.status_code == 409
+
+
+def _upload_process_and_apply(
+    client: TestClient,
+    document_id: int,
+    *,
+    version: str,
+    content: str,
+    equipment_type: str,
+) -> dict:
+    upload = client.post(
+        f"/knowledge/documents/{document_id}/versions",
+        data={"version": version},
+        files={"file": (f"{version}.txt", content.encode(), "text/plain")},
+    )
+    assert upload.status_code == 201, upload.text
+    stored = upload.json()
+    applicability = client.post(
+        f"/knowledge/versions/{stored['id']}/applicability",
+        json={"equipment_type": equipment_type},
+    )
+    assert applicability.status_code == 201, applicability.text
+    processed = client.post(f"/knowledge/versions/{stored['id']}/process")
+    assert processed.status_code == 200, processed.text
+    assert processed.json()["status"] == "ready"
+    return stored
+
+
+def test_process_and_search_only_current_applicable_documents(
+    client: TestClient,
+) -> None:
+    cooler = _create_equipment(client)
+    pump_response = client.post(
+        "/equipment",
+        json={
+            "code": "KB-API-PUMP",
+            "name": "Knowledge API pump",
+            "equipment_type": "pump",
+            "location": "Test shop",
+        },
+    )
+    assert pump_response.status_code == 201
+    pump = pump_response.json()
+
+    cooling_document = _create_document(client)
+    old_version = _upload_process_and_apply(
+        client,
+        cooling_document["id"],
+        version="v1",
+        content="Давление масла старое значение.",
+        equipment_type="cooling_unit",
+    )
+    current_version = _upload_process_and_apply(
+        client,
+        cooling_document["id"],
+        version="v2",
+        content="Давление масла должно быть 5 бар. Проверить фильтр.",
+        equipment_type="cooling_unit",
+    )
+
+    pump_document = client.post(
+        "/knowledge/documents",
+        json={
+            "title": "Pump manual",
+            "document_type": "operation_manual",
+            "language": "ru",
+            "source_name": "FactoryMind demo warehouse",
+        },
+    ).json()
+    _upload_process_and_apply(
+        client,
+        pump_document["id"],
+        version="v1",
+        content="Давление масла насоса равно 7 бар.",
+        equipment_type="pump",
+    )
+
+    response = client.get(
+        "/knowledge/search",
+        params={"q": "давление масла", "equipment_id": cooler["id"]},
+    )
+    assert response.status_code == 200, response.text
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["document_version_id"] == current_version["id"]
+    assert results[0]["document_version_id"] != old_version["id"]
+    assert results[0]["page_start"] is None
+    assert len(results[0]["checksum_sha256"]) == 64
+
+    pump_results = client.get(
+        "/knowledge/search",
+        params={"q": "давление масла", "equipment_id": pump["id"]},
+    )
+    assert pump_results.status_code == 200
+    assert [item["document_id"] for item in pump_results.json()] == [
+        pump_document["id"]
+    ]
+
+
+def test_process_and_search_validation_errors(client: TestClient) -> None:
+    assert client.post("/knowledge/versions/999/process").status_code == 404
+    assert (
+        client.get(
+            "/knowledge/search",
+            params={"q": "давление", "equipment_id": 999},
+        ).status_code
+        == 404
+    )
+    equipment = _create_equipment(client)
+    assert (
+        client.get(
+            "/knowledge/search",
+            params={"q": "x", "equipment_id": equipment["id"]},
+        ).status_code
+        == 422
+    )

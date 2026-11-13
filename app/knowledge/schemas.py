@@ -56,6 +56,7 @@ class KnowledgeDocumentVersionResponse(BaseModel):
     source_uri: str | None
     status: DocumentVersionStatus
     processing_error: str | None
+    processed_at: AwareDatetime | None
     is_current: bool
     created_at: AwareDatetime
 
@@ -101,3 +102,50 @@ class KnowledgeDocumentDetail(KnowledgeDocumentResponse):
     """Документ, его версии и привязки без бинарного содержимого."""
 
     versions: list[KnowledgeDocumentVersionDetail]
+
+
+class KnowledgeChunkResponse(BaseModel):
+    """Сохранённый фрагмент текста с координатами источника."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_version_id: int
+    chunk_index: int
+    content: str
+    checksum_sha256: str
+    chunking_version: str
+    page_start: int | None
+    page_end: int | None
+    start_offset: int
+    end_offset: int
+    created_at: AwareDatetime
+
+
+class KnowledgeProcessingResponse(BaseModel):
+    """Результат детерминированной обработки версии."""
+
+    document_version_id: int
+    status: DocumentVersionStatus
+    processed_at: AwareDatetime | None
+    chunk_count: int
+    chunks: list[KnowledgeChunkResponse]
+
+
+class KnowledgeSearchResult(BaseModel):
+    """Релевантный чанк с данными для проверяемой цитаты."""
+
+    chunk_id: int
+    chunk_index: int
+    content: str
+    checksum_sha256: str
+    page_start: int | None
+    page_end: int | None
+    score: float = Field(ge=0)
+    document_id: int
+    document_title: str
+    document_type: DocumentType
+    source_name: str
+    document_version_id: int
+    document_version: str
+    source_uri: str | None

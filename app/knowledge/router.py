@@ -22,6 +22,14 @@ from app.knowledge.models import (
     KnowledgeDocumentApplicability,
     KnowledgeDocumentVersion,
 )
+from app.knowledge.processing import (
+    DocumentProcessingError,
+    process_document_version,
+)
+from app.knowledge.retrieval import (
+    InvalidKnowledgeQueryError,
+    search_knowledge,
+)
 from app.knowledge.schemas import (
     DocumentType,
     KnowledgeApplicabilityCreate,
@@ -30,6 +38,8 @@ from app.knowledge.schemas import (
     KnowledgeDocumentDetail,
     KnowledgeDocumentResponse,
     KnowledgeDocumentVersionResponse,
+    KnowledgeProcessingResponse,
+    KnowledgeSearchResult,
 )
 from app.knowledge.service import (
     MAX_DOCUMENT_SIZE_BYTES,
@@ -50,6 +60,36 @@ from app.knowledge.service import (
 )
 
 router = APIRouter(prefix="/knowledge", tags=["Knowledge Base"])
+
+
+@router.get(
+    "/search",
+    response_model=list[KnowledgeSearchResult],
+)
+def search_knowledge_endpoint(
+    q: Annotated[str, Query(min_length=2, max_length=500)],
+    equipment_id: Annotated[int, Query(gt=0)],
+    limit: Annotated[int, Query(ge=1, le=20)] = 5,
+    db: Session = Depends(get_db),
+) -> list[KnowledgeSearchResult]:
+    """Ищет релевантные фрагменты применимых текущих документов."""
+    try:
+        return search_knowledge(
+            db,
+            query=q,
+            equipment_id=equipment_id,
+            limit=limit,
+        )
+    except KnowledgeEquipmentNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Оборудование не найдено",
+        ) from None
+    except InvalidKnowledgeQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(
@@ -182,6 +222,36 @@ def add_applicability_endpoint(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/versions/{document_version_id}/process",
+    response_model=KnowledgeProcessingResponse,
+)
+def process_document_version_endpoint(
+    document_version_id: int,
+    db: Session = Depends(get_db),
+) -> KnowledgeProcessingResponse:
+    """Извлекает текст и атомарно сохраняет воспроизводимые чанки."""
+    try:
+        version, chunks = process_document_version(db, document_version_id)
+    except KnowledgeDocumentVersionNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Версия документа не найдена",
+        ) from None
+    except DocumentProcessingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    return KnowledgeProcessingResponse(
+        document_version_id=version.id,
+        status=version.status,
+        processed_at=version.processed_at,
+        chunk_count=len(chunks),
+        chunks=chunks,
+    )
 
 
 @router.delete(

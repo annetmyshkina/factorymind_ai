@@ -7,13 +7,23 @@ import pytest
 from sqlalchemy import func, select, text
 
 from app.core.database import SessionLocal, engine
+from app.equipment.models import Equipment
 from app.knowledge.models import KnowledgeDocument, KnowledgeDocumentVersion
-from app.knowledge.schemas import KnowledgeDocumentCreate
-from app.knowledge.service import add_document_version, create_document
+from app.knowledge.processing import process_document_version
+from app.knowledge.retrieval import search_knowledge
+from app.knowledge.schemas import (
+    KnowledgeApplicabilityCreate,
+    KnowledgeDocumentCreate,
+)
+from app.knowledge.service import (
+    add_applicability,
+    add_document_version,
+    create_document,
+)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("POSTGRES_INTEGRATION") != "1",
-    reason="Тест конкурентных версий требует PostgreSQL",
+    reason="Интеграционные тесты базы знаний требуют PostgreSQL",
 )
 
 
@@ -82,3 +92,70 @@ def test_parallel_version_uploads_leave_one_current_version() -> None:
             if document is not None:
                 db.delete(document)
                 db.commit()
+
+
+def test_postgresql_full_text_search_filters_by_applicability() -> None:
+    assert engine.dialect.name == "postgresql"
+    suffix = uuid4().hex
+    with SessionLocal() as db:
+        equipment = Equipment(
+            code=f"KB-FTS-{suffix}",
+            name="PostgreSQL FTS cooler",
+            equipment_type=f"cooler-{suffix}",
+            location="Integration test",
+        )
+        db.add(equipment)
+        db.commit()
+        db.refresh(equipment)
+        equipment_id = equipment.id
+
+        document = create_document(
+            db,
+            KnowledgeDocumentCreate(
+                title=f"FTS manual {suffix}",
+                document_type="maintenance_instruction",
+                source_name="PostgreSQL integration test",
+            ),
+        )
+        document_id = document.id
+        version = add_document_version(
+            db,
+            document.id,
+            version="v1",
+            filename="manual.txt",
+            mime_type="text/plain",
+            content="Проверить давление масла и состояние фильтра.".encode(),
+        )
+        add_applicability(
+            db,
+            version.id,
+            KnowledgeApplicabilityCreate(equipment_id=equipment.id),
+        )
+        process_document_version(db, version.id)
+
+        results = search_knowledge(
+            db,
+            query="давление масла",
+            equipment_id=equipment.id,
+        )
+        index_exists = db.scalar(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM pg_indexes "
+                "WHERE indexname = 'ix_knowledge_document_chunks_search')",
+            ),
+        )
+
+    try:
+        assert index_exists is True
+        assert len(results) == 1
+        assert results[0].document_id == document_id
+        assert results[0].score > 0
+    finally:
+        with SessionLocal() as db:
+            document = db.get(KnowledgeDocument, document_id)
+            if document is not None:
+                db.delete(document)
+            equipment = db.get(Equipment, equipment_id)
+            if equipment is not None:
+                db.delete(equipment)
+            db.commit()

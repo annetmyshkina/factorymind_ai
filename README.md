@@ -76,7 +76,9 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 | `POST` | `/knowledge/documents/{id}/versions` | Загрузить PDF, TXT или Markdown до 10 МБ |
 | `GET` | `/knowledge/versions/{id}/download` | Скачать исходный файл |
 | `POST` | `/knowledge/versions/{id}/applicability` | Связать версию с оборудованием или типом |
+| `POST` | `/knowledge/versions/{id}/process` | Извлечь текст и сохранить воспроизводимые чанки |
 | `DELETE` | `/knowledge/applicability/{id}` | Удалить ошибочную связь применимости |
+| `GET` | `/knowledge/search` | Найти применимые фрагменты (`q`, `equipment_id`) |
 
 Статусы инцидента: `open → in_progress → resolved → closed`, допускается
 `open ↔ closed`, `in_progress → open`, `resolved → in_progress`. Недопустимый
@@ -126,7 +128,7 @@ app/
   incidents/     инциденты: модели, сервис, API
   ai/            AI Gateway: контракты и провайдеры LLM
   experiments/   запуск экспериментов, оценки и отчёты
-  knowledge/     приём, версии и применимость технических документов
+  knowledge/     документы, обработка, применимость и retrieval
 tests/           pytest, SQLite in-memory
 migrations/      Alembic
 docs/            документация
