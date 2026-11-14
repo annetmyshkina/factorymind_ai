@@ -1,9 +1,12 @@
-from typing import Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
+from app.knowledge.schemas import DocumentType
 
 IncidentStatus = Literal["open", "in_progress", "resolved", "closed"]
 IncidentSeverity = Literal["low", "medium", "high", "critical"]
+AnalysisText = Annotated[str, Field(min_length=1, max_length=2000)]
 
 
 class IncidentCreate(BaseModel):
@@ -109,3 +112,97 @@ class LinkDeviationRequest(BaseModel):
     deviation_id: int = Field(
         description="ID отклонения (одно отклонение — один инцидент)",
     )
+
+
+class IncidentAnalysisCreate(BaseModel):
+    """Запрос на диагностический анализ инцидента с retrieval."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    query: str = Field(min_length=2, max_length=500)
+    provider: Literal["ollama", "compatible"]
+    model: str | None = Field(default=None, min_length=1, max_length=100)
+    max_sources: int = Field(default=5, ge=1, le=10)
+
+
+class IncidentAnalysisCitedItem(BaseModel):
+    """Вывод модели с явными ссылками на переданные фрагменты."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    text: AnalysisText
+    source_chunk_ids: list[int] = Field(min_length=1, max_length=10)
+
+    @model_validator(mode="after")
+    def source_ids_are_unique(self) -> Self:
+        if len(self.source_chunk_ids) != len(set(self.source_chunk_ids)):
+            raise ValueError("Ссылки на источники не должны повторяться")
+        return self
+
+
+class IncidentAnalysisResult(BaseModel):
+    """Проверенная структура диагностической рекомендации."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    observed_facts: list[AnalysisText] = Field(default_factory=list, max_length=30)
+    possible_causes: list[IncidentAnalysisCitedItem] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+    required_checks: list[IncidentAnalysisCitedItem] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+    recommendations: list[IncidentAnalysisCitedItem] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+    insufficient_data: list[AnalysisText] = Field(default_factory=list, max_length=20)
+    warnings: list[AnalysisText] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def contains_conclusion_or_limitation(self) -> Self:
+        has_conclusion = bool(
+            self.possible_causes or self.required_checks or self.recommendations
+        )
+        if not has_conclusion and not self.insufficient_data:
+            raise ValueError(
+                "Ответ должен содержать выводы или указание на недостаток данных",
+            )
+        return self
+
+
+class IncidentAnalysisSourceResponse(BaseModel):
+    """Источник, переданный модели и доступный для проверки цитаты."""
+
+    rank: int = Field(gt=0)
+    score: float = Field(ge=0)
+    chunk_id: int
+    chunk_index: int
+    content: str
+    checksum_sha256: str
+    page_start: int | None
+    page_end: int | None
+    document_id: int
+    document_title: str
+    document_type: DocumentType
+    source_name: str
+    document_version_id: int
+    document_version: str
+    source_uri: str | None
+    citation: str
+
+
+class IncidentAnalysisResponse(BaseModel):
+    """Сохранённая версия анализа с точным набором источников."""
+
+    id: int
+    incident_id: int
+    llm_call_id: int | None
+    query: str
+    prompt_version: str
+    status: Literal["completed", "insufficient"]
+    result: IncidentAnalysisResult
+    sources: list[IncidentAnalysisSourceResponse]
+    created_at: AwareDatetime

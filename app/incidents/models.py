@@ -4,7 +4,10 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     JSON,
     CheckConstraint,
+    Float,
     ForeignKey,
+    Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -110,6 +113,71 @@ class IncidentDeviation(Base):
         ForeignKey("equipment_deviations.id", ondelete="CASCADE"),
         primary_key=True,
     )
+
+
+class IncidentAnalysis(Base):
+    """Неизменяемый структурированный результат AI-анализа инцидента."""
+
+    __tablename__ = "incident_analyses"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('completed', 'insufficient')",
+            name="ck_incident_analyses_status",
+        ),
+        CheckConstraint(
+            "(status = 'completed' AND llm_call_id IS NOT NULL) "
+            "OR (status = 'insufficient' AND llm_call_id IS NULL)",
+            name="ck_incident_analyses_call_state",
+        ),
+        Index("ix_incident_analyses_incident_created", "incident_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    incident_id: Mapped[int] = mapped_column(
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    llm_call_id: Mapped[int | None] = mapped_column(
+        ForeignKey("llm_calls.id", ondelete="RESTRICT"),
+        unique=True,
+        nullable=True,
+    )
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    result: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class IncidentAnalysisSource(Base):
+    """Фрагмент документа, фактически переданный конкретному анализу."""
+
+    __tablename__ = "incident_analysis_sources"
+    __table_args__ = (
+        CheckConstraint("rank > 0", name="ck_incident_analysis_sources_rank"),
+        CheckConstraint("score >= 0", name="ck_incident_analysis_sources_score"),
+        UniqueConstraint(
+            "analysis_id",
+            "rank",
+            name="uq_incident_analysis_sources_analysis_rank",
+        ),
+    )
+
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("incident_analyses.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    chunk_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_document_chunks.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
 
 
 class IncidentEvent(Base):

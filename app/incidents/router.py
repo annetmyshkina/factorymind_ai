@@ -5,10 +5,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.ai.errors import ProviderNotConfiguredError, UnknownProviderError
+from app.ai.providers.factory import build_provider
+from app.core.config import settings
 from app.core.database import get_db
 from app.equipment.models import Equipment
+from app.incidents.analysis import (
+    IncidentForAnalysisNotFoundError,
+    InvalidIncidentAnalysisResponseError,
+    execute_incident_analysis,
+    list_incident_analyses,
+    prepare_incident_analysis,
+    save_insufficient_analysis,
+)
 from app.incidents.models import Incident, IncidentEvent
 from app.incidents.schemas import (
+    IncidentAnalysisCreate,
+    IncidentAnalysisResponse,
     IncidentCreate,
     IncidentDetailResponse,
     IncidentEventResponse,
@@ -191,6 +204,100 @@ def add_deviation(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/{incident_id}/analyses",
+    response_model=IncidentAnalysisResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_incident_analysis(
+    incident_id: int,
+    payload: IncidentAnalysisCreate,
+    db: Session = Depends(get_db),
+) -> IncidentAnalysisResponse:
+    """Создаёт версионированный анализ с проверяемыми RAG-источниками."""
+    try:
+        prepared = prepare_incident_analysis(
+            db,
+            incident_id=incident_id,
+            query=payload.query,
+            max_sources=payload.max_sources,
+        )
+    except IncidentForAnalysisNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Инцидент не найден",
+        ) from None
+
+    if not prepared.sources:
+        return save_insufficient_analysis(db, prepared)
+
+    try:
+        provider = build_provider(
+            payload.provider,
+            settings,
+            model=payload.model,
+        )
+    except UnknownProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    except ProviderNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    try:
+        call, analysis = execute_incident_analysis(db, provider, prepared)
+    except InvalidIncidentAnalysisResponseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": str(exc), "call_id": exc.call_id},
+        ) from exc
+    finally:
+        provider.close()
+
+    if call.status == "error":
+        status_code = (
+            status.HTTP_504_GATEWAY_TIMEOUT
+            if call.error_type == "timeout"
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": call.error_message, "call_id": call.id},
+        )
+
+    assert analysis is not None
+    return analysis
+
+
+@router.get(
+    "/{incident_id}/analyses",
+    response_model=list[IncidentAnalysisResponse],
+)
+def get_incident_analyses(
+    incident_id: int,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    db: Session = Depends(get_db),
+) -> list[IncidentAnalysisResponse]:
+    """Возвращает историю анализов без повторного вызова LLM."""
+    try:
+        return list_incident_analyses(
+            db,
+            incident_id=incident_id,
+            limit=limit,
+            offset=offset,
+        )
+    except IncidentForAnalysisNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Инцидент не найден",
+        ) from None
 
 
 @router.get(

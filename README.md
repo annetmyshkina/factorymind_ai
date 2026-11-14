@@ -61,6 +61,8 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 | `PATCH` | `/incidents/{id}` | Статус, severity, исполнитель, описание |
 | `POST` | `/incidents/{id}/deviations` | Привязать отклонение (идемпотентно) |
 | `GET` | `/incidents/{id}/events` | История событий инцидента |
+| `POST` | `/incidents/{id}/analyses` | Выполнить RAG-анализ с проверяемыми источниками |
+| `GET` | `/incidents/{id}/analyses` | Получить историю версий анализа |
 | `POST` | `/ai/calls` | Вызвать модель и сохранить вызов |
 | `GET` | `/ai/calls` | Журнал (`provider`, `status`, `limit`, `offset`) |
 | `GET` | `/ai/calls/{id}` | Карточка вызова |
@@ -125,7 +127,7 @@ app/
   equipment/     оборудование
   telemetry/     показания, MQTT-подписчик и обработчик
   monitoring/    правила мониторинга и отклонения
-  incidents/     инциденты: модели, сервис, API
+  incidents/     инциденты, аудит и версионированный AI-анализ
   ai/            AI Gateway: контракты и провайдеры LLM
   experiments/   запуск экспериментов, оценки и отчёты
   knowledge/     документы, обработка, применимость и retrieval
