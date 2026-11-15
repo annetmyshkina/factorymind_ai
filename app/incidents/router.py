@@ -18,6 +18,7 @@ from app.incidents.analysis import (
     prepare_incident_analysis,
     save_insufficient_analysis,
 )
+from app.incidents.feedback import revoke_resolution_on_incident_reopen
 from app.incidents.models import Incident, IncidentEvent
 from app.incidents.schemas import (
     IncidentAnalysisCreate,
@@ -148,6 +149,14 @@ def update_incident(
         # поля запроса ещё не успеют изменить состояние сессии.
         if payload.status is not None:
             change_status(db, incident, payload.status)
+            if payload.status in {"open", "in_progress"} and old_status in {
+                "resolved",
+                "closed",
+            }:
+                revoke_resolution_on_incident_reopen(
+                    db,
+                    incident_id=incident.id,
+                )
 
         if payload.severity is not None:
             incident.severity = payload.severity

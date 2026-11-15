@@ -206,3 +206,125 @@ class IncidentAnalysisResponse(BaseModel):
     result: IncidentAnalysisResult
     sources: list[IncidentAnalysisSourceResponse]
     created_at: AwareDatetime
+
+
+FeedbackRating = Literal["helpful", "unhelpful", "incorrect"]
+
+
+class IncidentAnalysisFeedbackCreate(BaseModel):
+    """Субъективная оценка анализа, не являющаяся подтверждением причины."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    rating: FeedbackRating
+    comment: str | None = Field(default=None, min_length=1, max_length=2000)
+    actor: str = Field(min_length=1, max_length=200)
+
+
+class IncidentAnalysisFeedbackResponse(BaseModel):
+    """Неизменяемая запись обратной связи с непроверенным автором."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    analysis_id: int
+    rating: FeedbackRating
+    comment: str | None
+    actor: str
+    actor_verified: bool
+    created_at: AwareDatetime
+
+
+class IncidentResolutionCreate(BaseModel):
+    """Первичное или повторное подтверждение результата диагностики."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    analysis_id: int | None = Field(default=None, gt=0)
+    checks_performed: list[AnalysisText] = Field(min_length=1, max_length=50)
+    confirmed_cause: AnalysisText | None = None
+    actions_taken: list[AnalysisText] = Field(min_length=1, max_length=50)
+    outcome: AnalysisText
+    actor: str = Field(min_length=1, max_length=200)
+    reason: AnalysisText | None = None
+
+
+class IncidentResolutionUpdate(BaseModel):
+    """Исправление текущего результата с обязательным объяснением."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    analysis_id: int | None = Field(default=None, gt=0)
+    checks_performed: list[AnalysisText] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+    )
+    confirmed_cause: AnalysisText | None = None
+    actions_taken: list[AnalysisText] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+    )
+    outcome: AnalysisText | None = None
+    actor: str = Field(min_length=1, max_length=200)
+    reason: AnalysisText
+
+    @model_validator(mode="after")
+    def contains_resolution_change(self) -> Self:
+        change_fields = {
+            "analysis_id",
+            "checks_performed",
+            "confirmed_cause",
+            "actions_taken",
+            "outcome",
+        }
+        if not self.model_fields_set.intersection(change_fields):
+            raise ValueError("Укажите хотя бы одно изменение результата")
+        return self
+
+
+class IncidentResolutionRevoke(BaseModel):
+    """Отзыв ранее подтверждённого результата."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    actor: str = Field(min_length=1, max_length=200)
+    reason: AnalysisText
+
+
+class IncidentResolutionResponse(BaseModel):
+    """Текущий снимок подтверждённого результата диагностики."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    incident_id: int
+    analysis_id: int | None
+    checks_performed: list[str]
+    confirmed_cause: str | None
+    actions_taken: list[str]
+    outcome: str
+    actor: str
+    actor_verified: bool
+    is_active: bool
+    revision: int
+    confirmed_at: AwareDatetime
+    updated_at: AwareDatetime
+    revoked_at: AwareDatetime | None
+
+
+class IncidentResolutionEventResponse(BaseModel):
+    """Запись аудита изменения подтверждённого результата."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    resolution_id: int
+    event_type: Literal["confirmed", "corrected", "revoked"]
+    actor: str
+    actor_verified: bool
+    reason: str | None
+    before_snapshot: dict[str, object] | None
+    after_snapshot: dict[str, object]
+    created_at: AwareDatetime

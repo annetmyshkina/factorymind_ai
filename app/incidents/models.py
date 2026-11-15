@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     Float,
     ForeignKey,
@@ -11,7 +12,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -178,6 +181,174 @@ class IncidentAnalysisSource(Base):
     )
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class IncidentAnalysisFeedback(Base):
+    """Неизменяемая субъективная оценка сохранённого AI-анализа."""
+
+    __tablename__ = "incident_analysis_feedback"
+    __table_args__ = (
+        CheckConstraint(
+            "rating IN ('helpful', 'unhelpful', 'incorrect')",
+            name="ck_incident_analysis_feedback_rating",
+        ),
+        CheckConstraint(
+            "actor_verified = false",
+            name="ck_incident_analysis_feedback_actor_unverified",
+        ),
+        Index(
+            "ix_incident_analysis_feedback_analysis_created",
+            "analysis_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("incident_analyses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rating: Mapped[str] = mapped_column(String(20), nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor: Mapped[str] = mapped_column(String(200), nullable=False)
+    actor_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class IncidentResolution(Base):
+    """Текущий подтверждённый результат диагностики одного инцидента."""
+
+    __tablename__ = "incident_resolutions"
+    __table_args__ = (
+        CheckConstraint(
+            "revision > 0",
+            name="ck_incident_resolutions_revision",
+        ),
+        CheckConstraint(
+            "(is_active AND revoked_at IS NULL) "
+            "OR (NOT is_active AND revoked_at IS NOT NULL)",
+            name="ck_incident_resolutions_active_state",
+        ),
+        CheckConstraint(
+            "actor_verified = false",
+            name="ck_incident_resolutions_actor_unverified",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    incident_id: Mapped[int] = mapped_column(
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    analysis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("incident_analyses.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    checks_performed: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    confirmed_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actions_taken: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    actor: Mapped[str] = mapped_column(String(200), nullable=False)
+    actor_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=true(),
+        nullable=False,
+    )
+    revision: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+        server_default="1",
+        nullable=False,
+    )
+    confirmed_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(),
+        nullable=True,
+    )
+
+
+class IncidentResolutionEvent(Base):
+    """Неизменяемый аудит подтверждения, исправления и отзыва результата."""
+
+    __tablename__ = "incident_resolution_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('confirmed', 'corrected', 'revoked')",
+            name="ck_incident_resolution_events_type",
+        ),
+        CheckConstraint(
+            "after_snapshot IS NOT NULL",
+            name="ck_incident_resolution_events_after_snapshot",
+        ),
+        CheckConstraint(
+            "event_type = 'confirmed' OR before_snapshot IS NOT NULL",
+            name="ck_incident_resolution_events_before_snapshot",
+        ),
+        CheckConstraint(
+            "actor_verified = false",
+            name="ck_incident_resolution_events_actor_unverified",
+        ),
+        Index(
+            "ix_incident_resolution_events_resolution_created",
+            "resolution_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    resolution_id: Mapped[int] = mapped_column(
+        ForeignKey("incident_resolutions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    actor: Mapped[str] = mapped_column(String(200), nullable=False)
+    actor_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    before_snapshot: Mapped[dict[str, object] | None] = mapped_column(
+        JSON(none_as_null=True),
+        nullable=True,
+    )
+    after_snapshot: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
 
 
 class IncidentEvent(Base):

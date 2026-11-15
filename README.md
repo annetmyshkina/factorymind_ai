@@ -63,6 +63,13 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 | `GET` | `/incidents/{id}/events` | История событий инцидента |
 | `POST` | `/incidents/{id}/analyses` | Выполнить RAG-анализ с проверяемыми источниками |
 | `GET` | `/incidents/{id}/analyses` | Получить историю версий анализа |
+| `POST` | `/incidents/{id}/analyses/{analysis_id}/feedback` | Оценить анализ |
+| `GET` | `/incidents/{id}/analyses/{analysis_id}/feedback` | История оценок анализа |
+| `POST` | `/incidents/{id}/resolution` | Подтвердить результат диагностики |
+| `GET` | `/incidents/{id}/resolution` | Текущий результат диагностики |
+| `PATCH` | `/incidents/{id}/resolution` | Исправить подтверждённый результат |
+| `POST` | `/incidents/{id}/resolution/revoke` | Отозвать подтверждение |
+| `GET` | `/incidents/{id}/resolution/events` | Аудит изменений результата |
 | `POST` | `/ai/calls` | Вызвать модель и сохранить вызов |
 | `GET` | `/ai/calls` | Журнал (`provider`, `status`, `limit`, `offset`) |
 | `GET` | `/ai/calls/{id}` | Карточка вызова |
@@ -127,7 +134,7 @@ app/
   equipment/     оборудование
   telemetry/     показания, MQTT-подписчик и обработчик
   monitoring/    правила мониторинга и отклонения
-  incidents/     инциденты, аудит и версионированный AI-анализ
+  incidents/     инциденты, AI-анализ, feedback и подтверждённые результаты
   ai/            AI Gateway: контракты и провайдеры LLM
   experiments/   запуск экспериментов, оценки и отчёты
   knowledge/     документы, обработка, применимость и retrieval
