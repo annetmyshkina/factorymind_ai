@@ -5,10 +5,16 @@
 оборудования, название инцидента и ревизию решения, поэтому не зависят от ID
 конкретной базы данных.
 
+`answers-v1.json` содержит записанные сырые ответы `incident-analysis-v2`, набор
+переданных и ожидаемых source ID, политику `insufficient_data` и обязательные
+предупреждения. Он проверяет тот же `IncidentAnalysisResult`, который используется
+API, но не вызывает модель повторно.
+
 Benchmark выполняется только на заранее подготовленном изолированном корпусе:
 
 ```bash
 uv run python -m app.evaluation.cli benchmarks/rag/retrieval-v1.json
+uv run python -m app.evaluation.answer_cli benchmarks/rag/answers-v1.json
 ```
 
 Команда ничего не записывает в базу и возвращает JSON-отчёт. `hit@k`,
@@ -18,3 +24,7 @@ uv run python -m app.evaluation.cli benchmarks/rag/retrieval-v1.json
 
 PostgreSQL-интеграционный тест создаёт этот корпус в CI, выполняет suite и удаляет
 тестовые данные после проверки.
+
+Answer benchmark не требует БД или сети. В отчёте раздельно представлены
+валидность JSON и схемы, citation coverage, неизвестные ссылки, recall ожидаемых
+документов и подтверждённого опыта, обработка недостатка данных и предупреждения.

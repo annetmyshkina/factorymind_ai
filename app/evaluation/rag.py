@@ -10,13 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.equipment.models import Equipment
+from app.evaluation.errors import BenchmarkError
 from app.incidents.experience import search_similar_incidents
 from app.incidents.models import Incident
 from app.knowledge.retrieval import search_knowledge
 
-
-class RAGBenchmarkError(ValueError):
-    """Benchmark некорректен или не соответствует подготовленному корпусу."""
+RAG_RETRIEVAL_EVALUATOR_VERSION = "rag-retrieval-deterministic-v1"
 
 
 class ExpectedDocumentSource(BaseModel):
@@ -166,6 +165,7 @@ class RAGBenchmarkReport(BaseModel):
     """Отчёт suite с независимыми сводками по двум типам источников."""
 
     suite_version: str
+    evaluator_version: str
     cases: list[RAGBenchmarkCaseReport]
     document_summary: RetrievalMetricSummary
     experience_summary: RetrievalMetricSummary
@@ -193,9 +193,9 @@ def evaluate_ranked_retrieval(
 ) -> RankedRetrievalMetrics:
     """Считает метрики top-k либо отдельную проверку корректного исключения."""
     if len(retrieved_keys) != len(set(retrieved_keys)):
-        raise RAGBenchmarkError("Результаты retrieval не должны повторяться")
+        raise BenchmarkError("Результаты retrieval не должны повторяться")
     if len(expected_keys) != len(set(expected_keys)):
-        raise RAGBenchmarkError("Ожидаемые источники не должны повторяться")
+        raise BenchmarkError("Ожидаемые источники не должны повторяться")
 
     top_k = retrieved_keys[:k]
     expected = set(expected_keys)
@@ -268,11 +268,11 @@ def load_rag_benchmark(path: Path) -> RAGBenchmarkSuite:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise RAGBenchmarkError(f"Не удалось прочитать benchmark: {path}") from exc
+        raise BenchmarkError(f"Не удалось прочитать benchmark: {path}") from exc
     try:
         return RAGBenchmarkSuite.model_validate(payload)
     except ValidationError as exc:
-        raise RAGBenchmarkError(f"Benchmark не прошёл валидацию: {path}") from exc
+        raise BenchmarkError(f"Benchmark не прошёл валидацию: {path}") from exc
 
 
 def _resolve_case_context(
@@ -283,7 +283,7 @@ def _resolve_case_context(
         select(Equipment).where(Equipment.code == case.equipment_code),
     )
     if equipment is None:
-        raise RAGBenchmarkError(
+        raise BenchmarkError(
             f"Кейс {case.case_id}: оборудование {case.equipment_code} не найдено",
         )
     incidents = list(
@@ -295,7 +295,7 @@ def _resolve_case_context(
         ),
     )
     if len(incidents) != 1:
-        raise RAGBenchmarkError(
+        raise BenchmarkError(
             f"Кейс {case.case_id}: ожидается ровно один исходный инцидент",
         )
     return equipment, incidents[0]
@@ -359,6 +359,7 @@ def evaluate_rag_suite(
     case_reports = [evaluate_rag_case(db, case) for case in suite.cases]
     return RAGBenchmarkReport(
         suite_version=suite.suite_version,
+        evaluator_version=RAG_RETRIEVAL_EVALUATOR_VERSION,
         cases=case_reports,
         document_summary=summarize_retrieval(
             [report.documents for report in case_reports],

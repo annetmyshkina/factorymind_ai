@@ -1,0 +1,70 @@
+{
+  "suite_version": "incident-answer-v1",
+  "prompt_version": "incident-analysis-v2",
+  "description": "Структура, citations и ограничения ответов incident-analysis-v2",
+  "cases": [
+    {
+      "case_id": "grounded-mixed-sources",
+      "description": "Валидный ответ использует документацию и подтверждённый опыт",
+      "response_text": "{\"observed_facts\":[\"Температура превысила порог\"],\"possible_causes\":[{\"text\":\"Возможна проблема с давлением масла\",\"source_chunk_ids\":[],\"resolution_ids\":[201]}],\"required_checks\":[{\"text\":\"Проверить давление масла\",\"source_chunk_ids\":[101],\"resolution_ids\":[]}],\"recommendations\":[{\"text\":\"Сопоставить инструкцию с прошлым случаем\",\"source_chunk_ids\":[101],\"resolution_ids\":[201]}],\"insufficient_data\":[],\"warnings\":[\"Результат носит рекомендательный характер и должен быть проверен квалифицированным специалистом до выполнения действий.\"]}",
+      "allowed_chunk_ids": [101],
+      "allowed_resolution_ids": [201],
+      "expected_chunk_ids": [101],
+      "expected_resolution_ids": [201],
+      "insufficient_data": "forbidden",
+      "required_warnings": [
+        "Результат носит рекомендательный характер и должен быть проверен квалифицированным специалистом до выполнения действий."
+      ]
+    },
+    {
+      "case_id": "unknown-experience-citation",
+      "description": "Структура валидна, но модель ссылается на непереданное решение",
+      "response_text": "{\"observed_facts\":[],\"possible_causes\":[{\"text\":\"Причина из неизвестного случая\",\"source_chunk_ids\":[],\"resolution_ids\":[999]}],\"required_checks\":[],\"recommendations\":[],\"insufficient_data\":[],\"warnings\":[\"Результат носит рекомендательный характер и должен быть проверен квалифицированным специалистом до выполнения действий.\"]}",
+      "allowed_chunk_ids": [101],
+      "allowed_resolution_ids": [201],
+      "expected_chunk_ids": [],
+      "expected_resolution_ids": [201],
+      "insufficient_data": "forbidden",
+      "required_warnings": [
+        "Результат носит рекомендательный характер и должен быть проверен квалифицированным специалистом до выполнения действий."
+      ]
+    },
+    {
+      "case_id": "missing-conclusion-citation",
+      "description": "Вывод без ссылки не проходит производственную схему",
+      "response_text": "{\"observed_facts\":[],\"possible_causes\":[{\"text\":\"Причина без доказательства\",\"source_chunk_ids\":[],\"resolution_ids\":[]}],\"required_checks\":[],\"recommendations\":[],\"insufficient_data\":[],\"warnings\":[\"Результат носит рекомендательный характер и должен быть проверен квалифицированным специалистом до выполнения действий.\"]}",
+      "allowed_chunk_ids": [101],
+      "allowed_resolution_ids": [],
+      "expected_chunk_ids": [101],
+      "expected_resolution_ids": [],
+      "insufficient_data": "forbidden",
+      "required_warnings": [
+        "Результат носит рекомендательный характер и должен быть проверен квалифицированным специалистом до выполнения действий."
+      ]
+    },
+    {
+      "case_id": "explicit-insufficient-data",
+      "description": "При отсутствии источников ответ явно сообщает о недостатке данных",
+      "response_text": "{\"observed_facts\":[\"Инцидент зарегистрирован\"],\"possible_causes\":[],\"required_checks\":[],\"recommendations\":[],\"insufficient_data\":[\"Нет применимых документов и подтверждённых случаев\"],\"warnings\":[\"Результат носит рекомендательный характер и должен быть проверен квалифицированным специалистом до выполнения действий.\"]}",
+      "allowed_chunk_ids": [],
+      "allowed_resolution_ids": [],
+      "expected_chunk_ids": [],
+      "expected_resolution_ids": [],
+      "insufficient_data": "required",
+      "required_warnings": [
+        "Результат носит рекомендательный характер и должен быть проверен квалифицированным специалистом до выполнения действий."
+      ]
+    },
+    {
+      "case_id": "invalid-json",
+      "description": "Невалидный JSON остаётся отдельной наблюдаемой ошибкой",
+      "response_text": "not-json",
+      "allowed_chunk_ids": [],
+      "allowed_resolution_ids": [],
+      "expected_chunk_ids": [],
+      "expected_resolution_ids": [],
+      "insufficient_data": "optional",
+      "required_warnings": []
+    }
+  ]
+}

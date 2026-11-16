@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from app.evaluation import cli
+from app.evaluation.errors import BenchmarkError
 from app.evaluation.rag import (
-    RAGBenchmarkError,
     RAGBenchmarkReport,
     RetrievalMetricSummary,
     evaluate_ranked_retrieval,
@@ -56,7 +56,7 @@ def test_empty_expectation_is_an_exclusion_check() -> None:
 
 
 def test_duplicate_retrieval_results_are_rejected() -> None:
-    with pytest.raises(RAGBenchmarkError, match="не должны повторяться"):
+    with pytest.raises(BenchmarkError, match="не должны повторяться"):
         evaluate_ranked_retrieval(["same", "same"], ["same"], k=2)
 
 
@@ -80,6 +80,7 @@ def test_cli_outputs_json_report_without_committing(
     summary = RetrievalMetricSummary(relevant_cases=0, exclusion_cases=0)
     report = RAGBenchmarkReport(
         suite_version="rag-retrieval-v1",
+        evaluator_version="rag-retrieval-deterministic-v1",
         cases=[],
         document_summary=summary,
         experience_summary=summary,

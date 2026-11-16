@@ -189,6 +189,7 @@ def test_versioned_rag_benchmark_on_isolated_postgresql() -> None:
             db.rollback()
 
         reports = {item.case_id: item for item in report.cases}
+        assert report.evaluator_version == "rag-retrieval-deterministic-v1"
         relevant = reports["oil-pressure-relevant-sources"]
         assert relevant.documents.hit_at_k is True
         assert relevant.documents.recall_at_k == 1

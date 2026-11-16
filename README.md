@@ -41,6 +41,7 @@ make coverage     # pytest с покрытием (порог 85%)
 
 ```bash
 uv run python -m app.evaluation.cli benchmarks/rag/retrieval-v1.json
+uv run python -m app.evaluation.answer_cli benchmarks/rag/answers-v1.json
 ```
 
 CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request прогоняет
