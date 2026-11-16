@@ -1,0 +1,51 @@
+{
+  "suite_version": "rag-retrieval-v1",
+  "description": "Документы и подтверждённый опыт для диагностики компрессора",
+  "cases": [
+    {
+      "case_id": "oil-pressure-relevant-sources",
+      "description": "Находит применимую инструкцию и активный подтверждённый случай",
+      "equipment_code": "BENCH-RAG-COMPRESSOR-V1",
+      "incident_title": "Текущий перегрев компрессора",
+      "query": "давление масла",
+      "document_k": 5,
+      "experience_k": 3,
+      "expected_documents": [
+        {
+          "document_title": "Benchmark: инструкция компрессора",
+          "document_version": "v1",
+          "chunk_index": 0
+        }
+      ],
+      "expected_experiences": [
+        {
+          "equipment_code": "BENCH-RAG-COMPRESSOR-V1",
+          "incident_title": "Историческое падение давления масла",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "case_id": "foreign-equipment-isolation",
+      "description": "Не возвращает документы и опыт другого типа оборудования",
+      "equipment_code": "BENCH-RAG-COMPRESSOR-V1",
+      "incident_title": "Текущий перегрев компрессора",
+      "query": "приводной ремень",
+      "document_k": 5,
+      "experience_k": 3,
+      "expected_documents": [],
+      "expected_experiences": []
+    },
+    {
+      "case_id": "revoked-experience-exclusion",
+      "description": "Не возвращает отозванный подтверждённый результат",
+      "equipment_code": "BENCH-RAG-COMPRESSOR-V1",
+      "incident_title": "Текущий перегрев компрессора",
+      "query": "кавитация",
+      "document_k": 5,
+      "experience_k": 3,
+      "expected_documents": [],
+      "expected_experiences": []
+    }
+  ]
+}

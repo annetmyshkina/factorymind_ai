@@ -96,6 +96,7 @@ jobs:
           tests/test_feedback_postgres.py
           tests/test_experience_postgres.py
           tests/test_knowledge_postgres.py
+          tests/test_rag_evaluation_postgres.py
 
       - name: Verify rollback
         run: |

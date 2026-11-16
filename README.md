@@ -36,6 +36,13 @@ make check        # ruff check + ruff format --check + pytest
 make coverage     # pytest с покрытием (порог 85%)
 ```
 
+Офлайн RAG benchmark запускается на подготовленном PostgreSQL-корпусе без записи
+результатов в БД:
+
+```bash
+uv run python -m app.evaluation.cli benchmarks/rag/retrieval-v1.json
+```
+
 CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request прогоняет
 линтер, проверку форматирования и тесты с покрытием. Отдельная job применяет
 миграции к PostgreSQL, проверяет отсутствие расхождений схемы (`alembic check`)
@@ -63,6 +70,7 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 | `GET` | `/incidents/{id}/events` | История событий инцидента |
 | `POST` | `/incidents/{id}/analyses` | Выполнить RAG-анализ с проверяемыми источниками |
 | `GET` | `/incidents/{id}/analyses` | Получить историю версий анализа |
+| `GET` | `/incidents/{id}/similar-resolutions` | Найти похожий подтверждённый опыт |
 | `POST` | `/incidents/{id}/analyses/{analysis_id}/feedback` | Оценить анализ |
 | `GET` | `/incidents/{id}/analyses/{analysis_id}/feedback` | История оценок анализа |
 | `POST` | `/incidents/{id}/resolution` | Подтвердить результат диагностики |
