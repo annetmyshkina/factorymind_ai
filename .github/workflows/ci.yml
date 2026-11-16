@@ -94,6 +94,7 @@ jobs:
           uv run pytest
           tests/test_incident_concurrency.py
           tests/test_feedback_postgres.py
+          tests/test_experience_postgres.py
           tests/test_knowledge_postgres.py
 
       - name: Verify rollback

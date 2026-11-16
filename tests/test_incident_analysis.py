@@ -9,8 +9,17 @@ from app.ai.contracts import ChatMessage, LLMResponse, LLMUsage
 from app.ai.errors import LLMTimeoutError
 from app.ai.models import LLMCall
 from app.ai.providers.base import LLMProvider
-from app.incidents.analysis import HUMAN_REVIEW_WARNING
-from app.incidents.models import IncidentAnalysis, IncidentAnalysisSource
+from app.incidents.analysis import (
+    HUMAN_REVIEW_WARNING,
+    IncidentExperienceChangedError,
+    execute_incident_analysis,
+    prepare_incident_analysis,
+)
+from app.incidents.models import (
+    IncidentAnalysis,
+    IncidentAnalysisExperience,
+    IncidentAnalysisSource,
+)
 from app.knowledge.processing import process_document_version
 from app.knowledge.schemas import (
     KnowledgeApplicabilityCreate,
@@ -178,6 +187,28 @@ def _payload() -> dict:
     }
 
 
+def _create_confirmed_experience(client: TestClient, equipment_id: int) -> dict:
+    incident = _create_incident(client, equipment_id)
+    for target in ("in_progress", "resolved"):
+        response = client.patch(
+            f"/incidents/{incident['id']}",
+            json={"status": target},
+        )
+        assert response.status_code == 200, response.text
+    response = client.post(
+        f"/incidents/{incident['id']}/resolution",
+        json={
+            "checks_performed": ["Проверено давление масла"],
+            "confirmed_cause": "Загрязнение масляного фильтра",
+            "actions_taken": ["Фильтр заменён"],
+            "outcome": "Температура нормализовалась",
+            "actor": "engineer",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 def test_incident_analysis_is_grounded_journaled_and_versioned(
     client: TestClient,
     db_session: Session,
@@ -206,13 +237,14 @@ def test_incident_analysis_is_grounded_journaled_and_versioned(
     assert response.status_code == 201, response.text
     data = response.json()
     assert data["status"] == "completed"
-    assert data["prompt_version"] == "incident-analysis-v1"
+    assert data["prompt_version"] == "incident-analysis-v2"
     assert data["llm_call_id"] > 0
     assert data["result"]["possible_causes"][0]["source_chunk_ids"] == [chunk_id]
     assert HUMAN_REVIEW_WARNING in data["result"]["warnings"]
     assert data["sources"][0]["chunk_id"] == chunk_id
     assert data["sources"][0]["citation"].startswith("KB:D")
     assert data["sources"][0]["source_uri"] == "warehouse://manuals/cooler"
+    assert data["experiences"] == []
     assert provider.closed is True
 
     assert len(provider.calls) == 1
@@ -226,11 +258,12 @@ def test_incident_analysis_is_grounded_journaled_and_versioned(
         ]
         == 82.0
     )
-    assert prompt_payload["retrieved_sources"][0]["chunk_id"] == chunk_id
+    assert prompt_payload["retrieved_document_sources"][0]["chunk_id"] == chunk_id
+    assert prompt_payload["confirmed_experiences"] == []
 
     call = db_session.get(LLMCall, data["llm_call_id"])
     assert call is not None
-    assert call.prompt_version == "incident-analysis-v1"
+    assert call.prompt_version == "incident-analysis-v2"
     assert call.parameters == {"temperature": 0.0, "max_tokens": 1200}
     assert db_session.scalar(select(func.count()).select_from(IncidentAnalysis)) == 1
     assert (
@@ -271,6 +304,174 @@ def test_analysis_without_sources_is_saved_without_calling_llm(
     assert data["result"]["possible_causes"] == []
     assert data["result"]["insufficient_data"]
     assert db_session.scalar(select(LLMCall)) is None
+
+
+def test_analysis_uses_and_snapshots_confirmed_experience_without_documents(
+    client: TestClient,
+    db_session: Session,
+    equipment: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    experience = _create_confirmed_experience(client, equipment["id"])
+    incident = _create_incident(client, equipment["id"])
+    provider = FakeProvider(
+        content=json.dumps(
+            {
+                "observed_facts": ["Температура растёт под нагрузкой"],
+                "possible_causes": [
+                    {
+                        "text": "В похожем случае причиной был масляный фильтр",
+                        "source_chunk_ids": [],
+                        "resolution_ids": [experience["id"]],
+                    },
+                ],
+                "required_checks": [],
+                "recommendations": [],
+                "insufficient_data": [],
+                "warnings": [],
+            },
+            ensure_ascii=False,
+        ),
+    )
+    monkeypatch.setattr(
+        "app.incidents.router.build_provider",
+        lambda *args, **kwargs: provider,
+    )
+    payload = _payload()
+    payload["query"] = "масляного фильтра"
+
+    response = client.post(
+        f"/incidents/{incident['id']}/analyses",
+        json=payload,
+    )
+
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert data["status"] == "completed"
+    assert data["sources"] == []
+    assert data["experiences"][0]["resolution_id"] == experience["id"]
+    assert data["experiences"][0]["resolution_revision"] == 1
+    assert data["experiences"][0]["rank"] == 1
+    prompt_payload = json.loads(provider.calls[0][1].content)
+    assert prompt_payload["retrieved_document_sources"] == []
+    assert (
+        prompt_payload["confirmed_experiences"][0]["resolution_id"] == experience["id"]
+    )
+    saved = db_session.scalar(select(IncidentAnalysisExperience))
+    assert saved is not None
+    assert saved.snapshot["confirmed_cause"] == "Загрязнение масляного фильтра"
+
+
+def test_changed_experience_cannot_be_saved_by_stale_analysis(
+    client: TestClient,
+    db_session: Session,
+    equipment: dict,
+) -> None:
+    experience = _create_confirmed_experience(client, equipment["id"])
+    incident = _create_incident(client, equipment["id"])
+    prepared = prepare_incident_analysis(
+        db_session,
+        incident_id=incident["id"],
+        query="масляного фильтра",
+        max_sources=5,
+        max_experiences=3,
+    )
+    assert prepared.experiences[0].resolution_revision == 1
+
+    corrected = client.patch(
+        f"/incidents/{experience['incident_id']}/resolution",
+        json={
+            "confirmed_cause": "Ослабление приводного ремня",
+            "actor": "senior-engineer",
+            "reason": "Причина уточнена после разборки",
+        },
+    )
+    assert corrected.status_code == 200, corrected.text
+    provider = FakeProvider(
+        content=json.dumps(
+            {
+                "observed_facts": ["Есть похожий случай"],
+                "possible_causes": [
+                    {
+                        "text": "Проверить историческую причину",
+                        "source_chunk_ids": [],
+                        "resolution_ids": [experience["id"]],
+                    },
+                ],
+                "required_checks": [],
+                "recommendations": [],
+                "insufficient_data": [],
+                "warnings": [],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    with pytest.raises(IncidentExperienceChangedError):
+        execute_incident_analysis(db_session, provider, prepared)
+
+    assert db_session.scalar(select(LLMCall)) is not None
+    assert (
+        db_session.scalar(
+            select(IncidentAnalysis).where(
+                IncidentAnalysis.incident_id == incident["id"],
+            ),
+        )
+        is None
+    )
+
+
+def test_analysis_rejects_unknown_confirmed_experience_reference(
+    client: TestClient,
+    db_session: Session,
+    equipment: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    experience = _create_confirmed_experience(client, equipment["id"])
+    incident = _create_incident(client, equipment["id"])
+    provider = FakeProvider(
+        content=json.dumps(
+            {
+                "observed_facts": ["Есть похожий случай"],
+                "possible_causes": [
+                    {
+                        "text": "Ссылка не была передана модели",
+                        "source_chunk_ids": [],
+                        "resolution_ids": [experience["id"] + 999],
+                    },
+                ],
+                "required_checks": [],
+                "recommendations": [],
+                "insufficient_data": [],
+                "warnings": [],
+            },
+            ensure_ascii=False,
+        ),
+    )
+    monkeypatch.setattr(
+        "app.incidents.router.build_provider",
+        lambda *args, **kwargs: provider,
+    )
+    payload = _payload()
+    payload["query"] = "масляного фильтра"
+
+    response = client.post(
+        f"/incidents/{incident['id']}/analyses",
+        json=payload,
+    )
+
+    assert response.status_code == 502
+    assert "неизвестный подтверждённый опыт" in response.json()["detail"]["message"]
+    call_id = response.json()["detail"]["call_id"]
+    assert db_session.get(LLMCall, call_id) is not None
+    assert (
+        db_session.scalar(
+            select(IncidentAnalysis).where(
+                IncidentAnalysis.incident_id == incident["id"],
+            ),
+        )
+        is None
+    )
 
 
 def test_analysis_rejects_hallucinated_source_but_keeps_llm_call(

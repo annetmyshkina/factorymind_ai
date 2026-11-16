@@ -14,6 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     false,
     func,
+    text,
     true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -24,6 +25,13 @@ from app.core.types import UTCDateTime
 if TYPE_CHECKING:
     from app.equipment.models import Equipment
     from app.monitoring.models import EquipmentDeviation
+
+
+_resolution_search_index = Index(
+    "ix_incident_resolutions_search",
+    text("to_tsvector('simple', search_text)"),
+    postgresql_using="gin",
+).ddl_if(dialect="postgresql")
 
 
 class Incident(Base):
@@ -183,6 +191,38 @@ class IncidentAnalysisSource(Base):
     score: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class IncidentAnalysisExperience(Base):
+    """Снимок подтверждённого опыта, переданного конкретному анализу."""
+
+    __tablename__ = "incident_analysis_experiences"
+    __table_args__ = (
+        CheckConstraint("rank > 0", name="ck_incident_analysis_experiences_rank"),
+        CheckConstraint("score >= 0", name="ck_incident_analysis_experiences_score"),
+        CheckConstraint(
+            "resolution_revision > 0",
+            name="ck_incident_analysis_experiences_revision",
+        ),
+        UniqueConstraint(
+            "analysis_id",
+            "rank",
+            name="uq_incident_analysis_experiences_analysis_rank",
+        ),
+    )
+
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("incident_analyses.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    resolution_id: Mapped[int] = mapped_column(
+        ForeignKey("incident_resolutions.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    resolution_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    snapshot: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+
+
 class IncidentAnalysisFeedback(Base):
     """Неизменяемая субъективная оценка сохранённого AI-анализа."""
 
@@ -243,6 +283,7 @@ class IncidentResolution(Base):
             "actor_verified = false",
             name="ck_incident_resolutions_actor_unverified",
         ),
+        _resolution_search_index,
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -259,6 +300,7 @@ class IncidentResolution(Base):
     confirmed_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
     actions_taken: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    search_text: Mapped[str] = mapped_column(Text, nullable=False)
     actor: Mapped[str] = mapped_column(String(200), nullable=False)
     actor_verified: Mapped[bool] = mapped_column(
         Boolean,

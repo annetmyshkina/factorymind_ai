@@ -11,12 +11,18 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.equipment.models import Equipment
 from app.incidents.analysis import (
+    IncidentExperienceChangedError,
     IncidentForAnalysisNotFoundError,
     InvalidIncidentAnalysisResponseError,
     execute_incident_analysis,
     list_incident_analyses,
     prepare_incident_analysis,
     save_insufficient_analysis,
+)
+from app.incidents.experience import (
+    InvalidExperienceQueryError,
+    SimilarIncidentNotFoundError,
+    search_similar_incidents,
 )
 from app.incidents.feedback import revoke_resolution_on_incident_reopen
 from app.incidents.models import Incident, IncidentEvent
@@ -30,6 +36,7 @@ from app.incidents.schemas import (
     IncidentStatus,
     IncidentUpdate,
     LinkDeviationRequest,
+    SimilarIncidentResolution,
 )
 from app.incidents.service import (
     DeviationNotFoundError,
@@ -117,6 +124,36 @@ def list_incidents(
         query = query.where(Incident.equipment_id == equipment_id)
 
     return list(db.scalars(query).all())
+
+
+@router.get(
+    "/{incident_id}/similar-resolutions",
+    response_model=list[SimilarIncidentResolution],
+)
+def get_similar_resolutions(
+    incident_id: int,
+    q: Annotated[str, Query(min_length=2, max_length=500)],
+    limit: Annotated[int, Query(ge=1, le=20)] = 5,
+    db: Session = Depends(get_db),
+) -> list[SimilarIncidentResolution]:
+    """Ищет активный подтверждённый опыт для того же типа оборудования."""
+    try:
+        return search_similar_incidents(
+            db,
+            incident_id=incident_id,
+            query=q,
+            limit=limit,
+        )
+    except SimilarIncidentNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Инцидент не найден",
+        ) from None
+    except InvalidExperienceQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/{incident_id}", response_model=IncidentDetailResponse)
@@ -232,6 +269,7 @@ def create_incident_analysis(
             incident_id=incident_id,
             query=payload.query,
             max_sources=payload.max_sources,
+            max_experiences=payload.max_experiences,
         )
     except IncidentForAnalysisNotFoundError:
         raise HTTPException(
@@ -239,7 +277,7 @@ def create_incident_analysis(
             detail="Инцидент не найден",
         ) from None
 
-    if not prepared.sources:
+    if not prepared.sources and not prepared.experiences:
         return save_insufficient_analysis(db, prepared)
 
     try:
@@ -264,6 +302,11 @@ def create_incident_analysis(
     except InvalidIncidentAnalysisResponseError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": str(exc), "call_id": exc.call_id},
+        ) from exc
+    except IncidentExperienceChangedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
             detail={"message": str(exc), "call_id": exc.call_id},
         ) from exc
     finally:

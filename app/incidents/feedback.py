@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.incidents.experience import build_resolution_search_text
 from app.incidents.models import (
     Incident,
     IncidentAnalysis,
@@ -140,6 +141,15 @@ def _resolution_snapshot(resolution: IncidentResolution) -> dict[str, object]:
     }
 
 
+def _refresh_resolution_search_text(resolution: IncidentResolution) -> None:
+    resolution.search_text = build_resolution_search_text(
+        checks_performed=list(resolution.checks_performed),
+        confirmed_cause=resolution.confirmed_cause,
+        actions_taken=list(resolution.actions_taken),
+        outcome=resolution.outcome,
+    )
+
+
 def _add_resolution_event(
     db: Session,
     resolution: IncidentResolution,
@@ -227,6 +237,7 @@ def confirm_incident_resolution(
     resolution.actor_verified = False
     resolution.is_active = True
     resolution.revoked_at = None
+    _refresh_resolution_search_text(resolution)
     db.flush()
     _add_resolution_event(
         db,
@@ -317,6 +328,7 @@ def correct_incident_resolution(
     resolution.actor = payload.actor
     resolution.actor_verified = False
     resolution.updated_at = datetime.now(UTC)
+    _refresh_resolution_search_text(resolution)
     db.flush()
     _add_resolution_event(
         db,

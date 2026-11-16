@@ -123,6 +123,7 @@ class IncidentAnalysisCreate(BaseModel):
     provider: Literal["ollama", "compatible"]
     model: str | None = Field(default=None, min_length=1, max_length=100)
     max_sources: int = Field(default=5, ge=1, le=10)
+    max_experiences: int = Field(default=3, ge=0, le=5)
 
 
 class IncidentAnalysisCitedItem(BaseModel):
@@ -131,12 +132,17 @@ class IncidentAnalysisCitedItem(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     text: AnalysisText
-    source_chunk_ids: list[int] = Field(min_length=1, max_length=10)
+    source_chunk_ids: list[int] = Field(default_factory=list, max_length=10)
+    resolution_ids: list[int] = Field(default_factory=list, max_length=5)
 
     @model_validator(mode="after")
-    def source_ids_are_unique(self) -> Self:
+    def source_ids_are_valid(self) -> Self:
         if len(self.source_chunk_ids) != len(set(self.source_chunk_ids)):
-            raise ValueError("Ссылки на источники не должны повторяться")
+            raise ValueError("Ссылки на документы не должны повторяться")
+        if len(self.resolution_ids) != len(set(self.resolution_ids)):
+            raise ValueError("Ссылки на подтверждённый опыт не должны повторяться")
+        if not self.source_chunk_ids and not self.resolution_ids:
+            raise ValueError("Вывод должен ссылаться хотя бы на один источник")
         return self
 
 
@@ -194,6 +200,32 @@ class IncidentAnalysisSourceResponse(BaseModel):
     citation: str
 
 
+class SimilarIncidentResolution(BaseModel):
+    """Активный подтверждённый опыт по похожему инциденту."""
+
+    resolution_id: int
+    resolution_revision: int = Field(gt=0)
+    incident_id: int
+    incident_title: str
+    equipment_id: int
+    equipment_code: str
+    equipment_type: str
+    match_scope: Literal["same_equipment", "same_equipment_type"]
+    checks_performed: list[str]
+    confirmed_cause: str | None
+    actions_taken: list[str]
+    outcome: str
+    confirmed_at: AwareDatetime
+    score: float = Field(ge=0)
+    citation: str
+
+
+class IncidentAnalysisExperienceResponse(SimilarIncidentResolution):
+    """Снимок подтверждённого опыта, фактически переданный модели."""
+
+    rank: int = Field(gt=0)
+
+
 class IncidentAnalysisResponse(BaseModel):
     """Сохранённая версия анализа с точным набором источников."""
 
@@ -205,6 +237,7 @@ class IncidentAnalysisResponse(BaseModel):
     status: Literal["completed", "insufficient"]
     result: IncidentAnalysisResult
     sources: list[IncidentAnalysisSourceResponse]
+    experiences: list[IncidentAnalysisExperienceResponse]
     created_at: AwareDatetime
 
 
