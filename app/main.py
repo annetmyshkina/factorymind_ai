@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
+from app.frontend import mount_frontend
 from app.telemetry.mqtt.client import MQTTSubscriber
 
 configure_logging()
@@ -46,3 +47,4 @@ app = FastAPI(
 
 app.add_middleware(RequestContextMiddleware)
 app.include_router(api_router)
+mount_frontend(app)

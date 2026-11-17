@@ -11,8 +11,8 @@
 
 ## Стек
 
-FastAPI, SQLAlchemy 2, Alembic, PostgreSQL 17, Mosquitto (paho-mqtt), structlog,
-pytest, ruff, uv.
+FastAPI, SQLAlchemy 2, Alembic, PostgreSQL 17, Mosquitto (paho-mqtt), React,
+TypeScript, Vite, structlog, pytest, ruff, uv.
 
 ## Быстрый старт
 
@@ -25,6 +25,18 @@ uv run uvicorn app.main:app --reload
 ```
 
 Swagger UI: <http://127.0.0.1:8000/docs>.
+
+Web-интерфейс запускается отдельно в режиме разработки и проксирует запросы к
+FastAPI на `127.0.0.1:8000`:
+
+```bash
+make frontend-install
+make frontend-dev
+```
+
+После `make frontend-build` FastAPI раздаёт собранный интерфейс по адресу
+<http://127.0.0.1:8000/ui/>. Если API недоступен, интерфейс явно переходит в
+демонстрационный режим; адрес внешнего API можно указать в настройках.
 
 Тесты не требуют PostgreSQL и MQTT: они работают на in-memory SQLite
 (`tests/conftest.py`), MQTT-подписчик при `ENVIRONMENT=test` не запускается.
@@ -148,6 +160,7 @@ app/
   ai/            AI Gateway: контракты и провайдеры LLM
   experiments/   запуск экспериментов, оценки и отчёты
   knowledge/     документы, обработка, применимость и retrieval
+frontend/        React/TypeScript интерфейс оператора
 tests/           pytest, SQLite in-memory
 migrations/      Alembic
 docs/            документация

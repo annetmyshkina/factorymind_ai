@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 # Команды приложения
-.PHONY: help install run worker lint format check lint-fix test coverage logs
+.PHONY: help install run worker lint format check lint-fix test coverage logs frontend-install frontend-dev frontend-build
 
 # Команды работы с базой данных
 .PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
@@ -21,6 +21,9 @@ help:
 	@echo "  make check               - выполнить все проверки"
 	@echo "  make test                - запустить тесты"
 	@echo "  make coverage            - тесты с покрытием (порог 85%)"
+	@echo "  make frontend-install    - установить зависимости web-интерфейса"
+	@echo "  make frontend-dev        - запустить web-интерфейс с API proxy"
+	@echo "  make frontend-build      - собрать web-интерфейс для /ui"
 	@echo ""
 	@echo "Работа с базой данных:"
 	@echo "  make db-init             - инициализировать Alembic"
@@ -63,6 +66,15 @@ test:
 
 coverage:
 	uv run pytest --cov=app --cov-report=term-missing
+
+frontend-install:
+	cd frontend && npm ci
+
+frontend-dev:
+	cd frontend && npm run dev
+
+frontend-build:
+	cd frontend && npm run build
 
 db-init:
 	uv run alembic init migrations
