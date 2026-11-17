@@ -88,6 +88,7 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 | `POST` | `/experiments` | Создать эксперимент со списком прогонов |
 | `GET` | `/experiments/{id}` | Статусы, ответы и оценки прогонов |
 | `GET` | `/experiments/{id}/report` | Сравнительный отчёт |
+| `GET` | `/evaluations/operational/incident-analyses` | Эксплуатационные сигналы AI-анализов |
 | `POST` | `/knowledge/documents` | Создать карточку технического документа |
 | `GET` | `/knowledge/documents` | Каталог и фильтр применимости к оборудованию |
 | `GET` | `/knowledge/documents/{id}` | Версии и области применения документа |

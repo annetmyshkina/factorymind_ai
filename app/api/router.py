@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.ai.router import router as ai_router
 from app.api.health import router as health_router
 from app.equipment.router import router as equipment_router
+from app.evaluation.router import router as evaluation_router
 from app.experiments.router import router as experiments_router
 from app.incidents.feedback_router import router as feedback_router
 from app.incidents.router import router as incidents_router
@@ -21,3 +22,4 @@ api_router.include_router(feedback_router)
 api_router.include_router(knowledge_router)
 api_router.include_router(ai_router)
 api_router.include_router(experiments_router)
+api_router.include_router(evaluation_router)
