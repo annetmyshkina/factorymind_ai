@@ -46,6 +46,12 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Validate Compose configuration
+        run: docker compose --profile simulation config --quiet
+
+      - name: Build telemetry simulator image
+        run: docker build -f Dockerfile.simulator -t factorymind-simulator:ci .
+
       - name: Lint
         run: uv run ruff check .
 
@@ -56,6 +62,7 @@ jobs:
         run: >-
           uv run pytest
           --cov=app
+          --cov=simulator
           --cov-report=term-missing
           --cov-fail-under=85
 

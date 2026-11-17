@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 # Команды приложения
-.PHONY: help install run worker lint format check lint-fix test coverage logs frontend-install frontend-dev frontend-build
+.PHONY: help install run worker lint format check lint-fix test coverage logs frontend-install frontend-dev frontend-build simulator-run simulator-start simulator-stop simulator-logs
 
 # Команды работы с базой данных
 .PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
@@ -24,6 +24,10 @@ help:
 	@echo "  make frontend-install    - установить зависимости web-интерфейса"
 	@echo "  make frontend-dev        - запустить web-интерфейс с API proxy"
 	@echo "  make frontend-build      - собрать web-интерфейс для /ui"
+	@echo "  make simulator-run       - запустить симулятор локально"
+	@echo "  make simulator-start     - собрать и запустить симулятор в Docker"
+	@echo "  make simulator-stop      - остановить Docker-симулятор"
+	@echo "  make simulator-logs      - показать поток событий симулятора"
 	@echo ""
 	@echo "Работа с базой данных:"
 	@echo "  make db-init             - инициализировать Alembic"
@@ -65,7 +69,7 @@ test:
 	uv run pytest
 
 coverage:
-	uv run pytest --cov=app --cov-report=term-missing
+	uv run pytest --cov=app --cov=simulator --cov-report=term-missing
 
 frontend-install:
 	cd frontend && npm ci
@@ -75,6 +79,18 @@ frontend-dev:
 
 frontend-build:
 	cd frontend && npm run build
+
+simulator-run:
+	uv run python -m simulator
+
+simulator-start:
+	docker compose --profile simulation up -d --build simulator
+
+simulator-stop:
+	docker compose --profile simulation stop simulator
+
+simulator-logs:
+	docker compose --profile simulation logs -f simulator
 
 db-init:
 	uv run alembic init migrations

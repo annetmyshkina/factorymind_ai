@@ -37,6 +37,29 @@ services:
       timeout: 5s
       retries: 3
 
+  simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile.simulator
+    container_name: factorymind-simulator
+    profiles: ["simulation"]
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_TELEMETRY_TOPIC: ${MQTT_TELEMETRY_TOPIC:-factorymind/equipment/+/telemetry}
+      SIMULATOR_EQUIPMENT_CODES: ${SIMULATOR_EQUIPMENT_CODES:-CMP-01,CMP-02,CMP-03}
+      SIMULATOR_SCENARIO: ${SIMULATOR_SCENARIO:-demo_cycle}
+      SIMULATOR_INTERVAL_SECONDS: ${SIMULATOR_INTERVAL_SECONDS:-2}
+      SIMULATOR_STEPS: ${SIMULATOR_STEPS:-0}
+      SIMULATOR_SEED: ${SIMULATOR_SEED:-42}
+      SIMULATOR_DROP_RATE: ${SIMULATOR_DROP_RATE:-0}
+      SIMULATOR_DUPLICATE_RATE: ${SIMULATOR_DUPLICATE_RATE:-0}
+      SIMULATOR_DELAY_RATE: ${SIMULATOR_DELAY_RATE:-0}
+      SIMULATOR_DELAY_STEPS: ${SIMULATOR_DELAY_STEPS:-2}
+
 volumes:
   postgres_data:
   mosquitto_data:

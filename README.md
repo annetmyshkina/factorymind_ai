@@ -147,6 +147,35 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 `suction_pressure_kpa_g`, `discharge_pressure_kpa_g`, `compressor_current_a`,
 `compressor_vsd_frequency_hz`, `coolant_flow_rate_m3_h`.
 
+### Симулятор телеметрии
+
+Отдельный процесс `simulator` имитирует внешнее оборудование и публикует тот же
+MQTT-контракт. Он не обращается к БД и не импортирует доменные сервисы. Перед
+запуском создайте в FactoryMind оборудование с кодами из
+`SIMULATOR_EQUIPMENT_CODES`; сообщения для неизвестных кодов будут штатно
+отклонены подписчиком.
+
+```bash
+make mqtt-start
+make simulator-run
+```
+
+Для контейнерного запуска:
+
+```bash
+make simulator-start
+make simulator-logs
+```
+
+Доступны отдельные сценарии `normal`, `warning`, `critical`, `recovery` и цикл
+`demo_cycle`. Значения являются синтетическими демонстрационными данными, а не
+нормативами производителя. Интервал, seed и конечное число шагов настраиваются
+через env; `SIMULATOR_STEPS=0` означает работу до остановки. Параметры
+`SIMULATOR_DROP_RATE`, `SIMULATOR_DUPLICATE_RATE`, `SIMULATOR_DELAY_RATE` и
+`SIMULATOR_DELAY_STEPS` позволяют воспроизводить потери, повторную доставку и
+задержанные сообщения. Каждый процесс получает отдельный MQTT client ID, поэтому
+локальный и контейнерный симуляторы могут работать одновременно.
+
 ## Структура
 
 ```text
@@ -161,6 +190,7 @@ app/
   experiments/   запуск экспериментов, оценки и отчёты
   knowledge/     документы, обработка, применимость и retrieval
 frontend/        React/TypeScript интерфейс оператора
+simulator/       внешний генератор синтетической MQTT-телеметрии
 tests/           pytest, SQLite in-memory
 migrations/      Alembic
 docs/            документация

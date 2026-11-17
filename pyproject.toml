@@ -47,7 +47,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.coverage.run]
-source = ["app"]
+source = ["app", "simulator"]
 
 [tool.coverage.report]
 fail_under = 85
