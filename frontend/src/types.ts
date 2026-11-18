@@ -35,6 +35,113 @@ export interface Incident {
   resolved_at: string | null;
 }
 
+export interface IncidentEvent {
+  id: number;
+  event_type: string;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface IncidentDetail extends Incident {
+  deviation_ids: number[];
+  events: IncidentEvent[];
+}
+
+export interface Deviation {
+  id: number;
+  equipment_id: number;
+  telemetry_id: number | null;
+  rule_id: number | null;
+  metric_name: string;
+  observed_value: number;
+  threshold_value: number;
+  message: string;
+  detected_at: string;
+  is_resolved: boolean;
+}
+
+export interface AnalysisCitedItem {
+  text: string;
+  source_chunk_ids: number[];
+  resolution_ids: number[];
+}
+
+export interface IncidentAnalysis {
+  id: number;
+  incident_id: number;
+  llm_call_id: number | null;
+  query: string;
+  prompt_version: string;
+  status: "completed" | "insufficient";
+  result: {
+    observed_facts: string[];
+    possible_causes: AnalysisCitedItem[];
+    required_checks: AnalysisCitedItem[];
+    recommendations: AnalysisCitedItem[];
+    insufficient_data: string[];
+    warnings: string[];
+  };
+  sources: Array<{
+    rank: number;
+    score: number;
+    chunk_id: number;
+    content: string;
+    document_title: string;
+    document_version: string;
+    page_start: number | null;
+    page_end: number | null;
+    citation: string;
+  }>;
+  experiences: Array<{
+    rank: number;
+    resolution_id: number;
+    incident_id: number;
+    incident_title: string;
+    equipment_code: string;
+    confirmed_cause: string | null;
+    actions_taken: string[];
+    outcome: string;
+    citation: string;
+  }>;
+  created_at: string;
+}
+
+export type FeedbackRating = "helpful" | "unhelpful" | "incorrect";
+
+export interface AnalysisFeedback {
+  id: number;
+  analysis_id: number;
+  rating: FeedbackRating;
+  comment: string | null;
+  actor: string;
+  actor_verified: boolean;
+  created_at: string;
+}
+
+export interface IncidentResolution {
+  id: number;
+  incident_id: number;
+  analysis_id: number | null;
+  checks_performed: string[];
+  confirmed_cause: string | null;
+  actions_taken: string[];
+  outcome: string;
+  actor: string;
+  actor_verified: boolean;
+  is_active: boolean;
+  revision: number;
+  confirmed_at: string;
+  updated_at: string;
+  revoked_at: string | null;
+}
+
+export interface IncidentWorkspace {
+  detail: IncidentDetail;
+  deviations: Deviation[];
+  analyses: IncidentAnalysis[];
+  resolution: IncidentResolution | null;
+}
+
 export interface KnowledgeDocument {
   id: number;
   title: string;

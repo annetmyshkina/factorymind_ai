@@ -1,5 +1,5 @@
 import { demoData } from "./demo";
-import type { DashboardData, DataMode, Equipment, Incident, KnowledgeDocument, OperationalReport, Telemetry } from "./types";
+import type { AnalysisFeedback, DashboardData, DataMode, Deviation, Equipment, FeedbackRating, Incident, IncidentAnalysis, IncidentDetail, IncidentResolution, IncidentStatus, IncidentWorkspace, KnowledgeDocument, OperationalReport, Telemetry } from "./types";
 
 const STORAGE_KEY = "factorymind-api-base";
 
@@ -13,28 +13,54 @@ export function saveApiBase(value: string): void {
   else localStorage.removeItem(STORAGE_KEY);
 }
 
-async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (init.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${getApiBase()}${path}`, {
-    headers: { Accept: "application/json" },
-    signal,
+    ...init,
+    headers,
   });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json() as { detail?: unknown };
+      if (typeof body.detail === "string") message = body.detail;
+      else if (body.detail && typeof body.detail === "object" && "message" in body.detail) message = String(body.detail.message);
+    } catch {
+      // Ответ без JSON оставляет стандартное HTTP-сообщение.
+    }
+    throw new ApiError(response.status, message);
+  }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return apiRequest<T>(path, { signal });
 }
 
 export async function loadDashboard(signal?: AbortSignal): Promise<{ data: DashboardData; mode: DataMode; error?: string }> {
   try {
-    await request<{ status: string }>("/health", signal);
+    await get<{ status: string }>("/health", signal);
     const [equipment, incidents, documents, quality] = await Promise.all([
-      request<Equipment[]>("/equipment", signal),
-      request<Incident[]>("/incidents", signal),
-      request<KnowledgeDocument[]>("/knowledge/documents", signal),
-      request<OperationalReport>("/evaluations/operational/incident-analyses", signal),
+      get<Equipment[]>("/equipment", signal),
+      get<Incident[]>("/incidents", signal),
+      get<KnowledgeDocument[]>("/knowledge/documents", signal),
+      get<OperationalReport>("/evaluations/operational/incident-analyses", signal),
     ]);
     const telemetryEntries = await Promise.all(
       equipment.slice(0, 12).map(async (item) => {
         try {
-          return [item.id, await request<Telemetry[]>(`/equipment/${item.id}/telemetry?limit=24`, signal)] as const;
+          return [item.id, await get<Telemetry[]>(`/equipment/${item.id}/telemetry?limit=24`, signal)] as const;
         } catch {
           return [item.id, []] as const;
         }
@@ -52,4 +78,68 @@ export async function loadDashboard(signal?: AbortSignal): Promise<{ data: Dashb
       error: error instanceof Error ? error.message : "API недоступен",
     };
   }
+}
+
+export async function loadIncidentWorkspace(incidentId: number, signal?: AbortSignal): Promise<IncidentWorkspace> {
+  const detail = await get<IncidentDetail>(`/incidents/${incidentId}`, signal);
+  const [allDeviations, analyses, resolution] = await Promise.all([
+    get<Deviation[]>(`/equipment/${detail.equipment_id}/deviations`, signal),
+    get<IncidentAnalysis[]>(`/incidents/${incidentId}/analyses`, signal),
+    get<IncidentResolution>(`/incidents/${incidentId}/resolution`, signal).catch((error) => {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }),
+  ]);
+  const deviationIds = new Set(detail.deviation_ids);
+  return {
+    detail,
+    deviations: allDeviations.filter((item) => deviationIds.has(item.id)),
+    analyses,
+    resolution,
+  };
+}
+
+export function updateIncident(
+  incidentId: number,
+  payload: { status?: IncidentStatus; assigned_to?: string | null; severity?: Incident["severity"] },
+): Promise<Incident> {
+  return apiRequest(`/incidents/${incidentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createIncidentAnalysis(
+  incidentId: number,
+  payload: { query: string; provider: "ollama" | "compatible"; model: string | null; max_sources: number; max_experiences: number },
+): Promise<IncidentAnalysis> {
+  return apiRequest(`/incidents/${incidentId}/analyses`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function loadAnalysisFeedback(incidentId: number, analysisId: number): Promise<AnalysisFeedback[]> {
+  return get(`/incidents/${incidentId}/analyses/${analysisId}/feedback`);
+}
+
+export function addAnalysisFeedback(
+  incidentId: number,
+  analysisId: number,
+  payload: { rating: FeedbackRating; comment: string | null; actor: string },
+): Promise<AnalysisFeedback> {
+  return apiRequest(`/incidents/${incidentId}/analyses/${analysisId}/feedback`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function confirmIncidentResolution(
+  incidentId: number,
+  payload: { analysis_id: number | null; checks_performed: string[]; confirmed_cause: string | null; actions_taken: string[]; outcome: string; actor: string; reason?: string },
+): Promise<IncidentResolution> {
+  return apiRequest(`/incidents/${incidentId}/resolution`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
