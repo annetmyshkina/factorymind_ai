@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getApiBase, loadDashboard, saveApiBase } from "./api";
 import { documentTypeLabels, severityLabels, statusLabels } from "./demo";
 import IncidentDrawer from "./IncidentDrawer";
+import { useNavigation } from "./navigation";
+import type { IncidentFilter } from "./navigation";
 import type { DashboardData, Equipment, Incident, IncidentSeverity, Telemetry, View } from "./types";
 
 const viewMeta: Record<View, { label: string; hint: string; icon: string }> = {
@@ -159,10 +161,9 @@ function EquipmentView({ data }: { data: DashboardData }) {
     </div></section>;
 }
 
-function IncidentsView({ data, onOpenIncident }: { data: DashboardData; onOpenIncident: (incident: Incident) => void }) {
-  const [filter, setFilter] = useState<"active" | "all">("active");
+function IncidentsView({ data, filter, onFilterChange, onOpenIncident }: { data: DashboardData; filter: IncidentFilter; onFilterChange: (filter: IncidentFilter) => void; onOpenIncident: (incident: Incident) => void }) {
   const incidents = filter === "active" ? data.incidents.filter((item) => ["open", "in_progress"].includes(item.status)) : data.incidents;
-  return <section className="panel page-panel"><header className="panel-header page-panel-header"><div><p className="eyebrow">Оперативное реагирование</p><h2>Инциденты</h2><p className="panel-copy">Приоритеты, владельцы и состояние обработки.</p></div><div className="segmented"><button className={filter === "active" ? "active" : ""} onClick={() => setFilter("active")}>Активные</button><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>Все</button></div></header>
+  return <section className="panel page-panel"><header className="panel-header page-panel-header"><div><p className="eyebrow">Оперативное реагирование</p><h2>Инциденты</h2><p className="panel-copy">Приоритеты, владельцы и состояние обработки.</p></div><div className="segmented"><button type="button" className={filter === "active" ? "active" : ""} onClick={() => onFilterChange("active")}>Активные</button><button type="button" className={filter === "all" ? "active" : ""} onClick={() => onFilterChange("all")}>Все</button></div></header>
     <div className="incident-table"><div className="table-head"><span>Приоритет</span><span>Инцидент</span><span>Оборудование</span><span>Статус</span><span>Исполнитель</span><span>Обновлён</span></div>
       {incidents.map((item) => <div role="button" tabIndex={0} className="table-row incident-row" key={item.id} onClick={() => onOpenIncident(item)} onKeyDown={(event) => activateOnKeyboard(event, () => onOpenIncident(item))}><SeverityBadge value={item.severity} /><div><strong>{item.title}</strong><small>#{item.id}{item.description ? ` · ${item.description}` : ""}</small></div><strong>{item.equipment_code}</strong><StatusBadge value={item.status} /><span>{item.assigned_to ?? "Не назначен"}</span><time>{timeAgo(item.updated_at)}</time></div>)}
       {!incidents.length && <Empty title="Инцидентов в этой выборке нет" copy="Новые инциденты появятся здесь автоматически." />}
@@ -201,12 +202,14 @@ function SettingsDialog({ onClose, onApply }: { onClose: () => void; onApply: ()
 }
 
 export default function App() {
-  const [view, setView] = useState<View>("overview");
+  const { view, filter, incidentId, navigate } = useNavigation();
   const [data, setData] = useState<DashboardData | null>(null);
   const [mode, setMode] = useState<"live" | "demo">("demo");
   const [loading, setLoading] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const selectedIncident = data?.incidents.find((item) => item.id === incidentId) ?? null;
+  const setView = (next: View) => navigate({ view: next, incidentId: null });
+  const openIncident = (incident: Incident) => navigate({ incidentId: incident.id });
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -223,13 +226,13 @@ export default function App() {
   }, [refresh]);
   const activeIncidents = useMemo(() => data?.incidents.filter((item) => ["open", "in_progress"].includes(item.status)).length ?? 0, [data]);
   const title = viewMeta[view];
-  const closeIncident = useCallback(() => setSelectedIncident(null), []);
+  const closeIncident = useCallback(() => navigate({ incidentId: null }), [navigate]);
 
   return <div className="app-shell">
     <aside className="sidebar"><div className="brand"><div className="brand-mark"><span /><span /><span /></div><div><strong>FactoryMind</strong><small>OPERATIONS</small></div></div><nav aria-label="Основная навигация">{(Object.keys(viewMeta) as View[]).map((key) => <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)} title={viewMeta[key].hint}><Icon name={viewMeta[key].icon} /><span>{viewMeta[key].label}</span>{key === "incidents" && activeIncidents > 0 && <b>{activeIncidents}</b>}</button>)}</nav><div className="sidebar-footer"><span className="system-light" /><div><strong>Система контроля</strong><small>{mode === "live" ? "API подключён" : "Демонстрация"}</small></div></div></aside>
     <div className="workspace"><header className="topbar"><div className="page-title"><p>{title.hint}</p><h1>{title.label}</h1></div><div className="topbar-actions"><div className={`connection connection-${mode}`}><span />{mode === "live" ? "Данные в реальном времени" : "Демоданные"}</div><button className="icon-button" onClick={() => void refresh()} disabled={loading} aria-label="Обновить данные" title="Обновить"><Icon name="refresh" /></button><button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Настройки API" title="Настройки API"><Icon name="settings" /></button><div className="shift"><span>Смена 2</span><strong>{new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(new Date())}</strong></div><div className="avatar">ДИ</div></div></header>
       {mode === "demo" && <div className="demo-banner"><div><Icon name="alert" size={18} /><span><strong>Демонстрационный режим.</strong> Backend недоступен; показаны иллюстративные, а не производственные данные.</span></div><button onClick={() => setSettingsOpen(true)}>Подключить API</button></div>}
-      <main>{loading && !data ? <div className="loading"><span /><p>Загружаем оперативные данные…</p></div> : data ? <>{view === "overview" && <Overview data={data} onNavigate={setView} onOpenIncident={setSelectedIncident} />}{view === "equipment" && <EquipmentView data={data} />}{view === "incidents" && <IncidentsView data={data} onOpenIncident={setSelectedIncident} />}{view === "knowledge" && <KnowledgeView data={data} />}{view === "quality" && <QualityView data={data} />}</> : <Empty title="Не удалось загрузить интерфейс" copy="Проверьте подключение к API и обновите страницу." />}</main>
+      <main>{loading && !data ? <div className="loading"><span /><p>Загружаем оперативные данные…</p></div> : data ? <>{view === "overview" && <Overview data={data} onNavigate={setView} onOpenIncident={openIncident} />}{view === "equipment" && <EquipmentView data={data} />}{view === "incidents" && <IncidentsView data={data} filter={filter} onFilterChange={(next) => navigate({ filter: next })} onOpenIncident={openIncident} />}{view === "knowledge" && <KnowledgeView data={data} />}{view === "quality" && <QualityView data={data} />}</> : <Empty title="Не удалось загрузить интерфейс" copy="Проверьте подключение к API и обновите страницу." />}</main>
     </div>
     {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} onApply={() => void refresh()} />}
     {selectedIncident && <IncidentDrawer incident={selectedIncident} mode={mode} onClose={closeIncident} onChanged={() => refresh()} />}

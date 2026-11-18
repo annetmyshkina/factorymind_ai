@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 # Команды приложения
-.PHONY: help install run worker lint format check lint-fix test coverage logs frontend-install frontend-dev frontend-build simulator-run simulator-start simulator-stop simulator-logs
+.PHONY: help install run dev worker lint format check lint-fix test coverage logs frontend-install frontend-dev frontend-build simulator-run simulator-start simulator-stop simulator-logs
 
 # Команды работы с базой данных
 .PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
@@ -15,6 +15,7 @@ help:
 	@echo "Общие команды:"
 	@echo "  make install             - установить зависимости"
 	@echo "  make run                 - запустить FastAPI"
+	@echo "  make dev                 - запустить backend и frontend вместе (Ctrl+C — стоп)"
 	@echo "  make worker              - запустить worker экспериментов"
 	@echo "  make lint                - проверить код"
 	@echo "  make format              - отформатировать код"
@@ -48,6 +49,9 @@ install:
 
 run:
 	uv run uvicorn app.main:app --reload
+
+dev:
+	bash scripts/dev.sh
 
 worker:
 	uv run python -m app.experiments.worker
