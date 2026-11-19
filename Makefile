@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 # Команды приложения
-.PHONY: help install run dev worker lint format check lint-fix test coverage logs frontend-install frontend-dev frontend-build simulator-run simulator-start simulator-stop simulator-logs
+.PHONY: help install run dev worker lint format check lint-fix test coverage logs frontend-install frontend-dev frontend-build simulator-run simulator-start simulator-stop simulator-logs observability-start observability-stop observability-logs
 
 # Команды работы с базой данных
 .PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
@@ -29,6 +29,9 @@ help:
 	@echo "  make simulator-start     - собрать и запустить симулятор в Docker"
 	@echo "  make simulator-stop      - остановить Docker-симулятор"
 	@echo "  make simulator-logs      - показать поток событий симулятора"
+	@echo "  make observability-start - запустить Prometheus и Grafana"
+	@echo "  make observability-stop  - остановить Prometheus и Grafana"
+	@echo "  make observability-logs  - показать логи Prometheus и Grafana"
 	@echo ""
 	@echo "Работа с базой данных:"
 	@echo "  make db-init             - инициализировать Alembic"
@@ -95,6 +98,15 @@ simulator-stop:
 
 simulator-logs:
 	docker compose --profile simulation logs -f simulator
+
+observability-start:
+	docker compose --profile observability up -d prometheus grafana
+
+observability-stop:
+	docker compose --profile observability stop prometheus grafana
+
+observability-logs:
+	docker compose --profile observability logs -f prometheus grafana
 
 db-init:
 	uv run alembic init migrations

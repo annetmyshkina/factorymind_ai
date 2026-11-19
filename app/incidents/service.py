@@ -10,6 +10,7 @@ from app.incidents.models import (
     IncidentEvent,
 )
 from app.monitoring.models import EquipmentDeviation
+from app.observability.metrics import observe_incident_created
 
 logger = structlog.get_logger(__name__)
 
@@ -84,6 +85,7 @@ def create_incident(
         assigned_to=assigned_to,
     )
     db.commit()
+    observe_incident_created(source="manual", severity=severity)
     db.refresh(incident)
 
     logger.info(

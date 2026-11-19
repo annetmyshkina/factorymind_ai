@@ -18,6 +18,12 @@ from app.ai.providers.factory import build_provider
 from app.ai.service import execute_call
 from app.core.config import Settings, settings
 from app.experiments.evaluation import create_evaluation
+from app.observability.metrics import (
+    EXPERIMENT_LEASE_RECOVERIES,
+    EXPERIMENT_RUN_OUTCOMES,
+    EXPERIMENT_RUNS_CLAIMED,
+    set_experiment_queue_counts,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -111,6 +117,7 @@ def claim_next_run(
     run.next_retry_at = None
     run.error = None
     db.commit()
+    EXPERIMENT_RUNS_CLAIMED.inc()
 
     logger.info(
         "experiment_run_claimed",
@@ -144,18 +151,24 @@ def recover_expired_runs(db: Session) -> int:
         return 0
 
     now = _database_now(db)
+    recovery_outcomes = {"requeued": 0, "failed": 0}
     for run in runs:
         _clear_lease(run)
         run.error = "Истёк lease worker-а"
         if run.attempt_count >= run.max_attempts:
+            recovery_outcomes["failed"] += 1
             run.status = "failed"
             run.finished_at = now
             run.next_retry_at = None
         else:
+            recovery_outcomes["requeued"] += 1
             run.status = "pending"
             run.finished_at = None
             run.next_retry_at = now
     db.commit()
+    for outcome, count in recovery_outcomes.items():
+        if count:
+            EXPERIMENT_LEASE_RECOVERIES.labels(outcome=outcome).inc(count)
     logger.warning("experiment_leases_recovered", count=len(runs))
     return len(runs)
 
@@ -224,6 +237,7 @@ def _finalize_success(
     run = _owned_run(db, claim)
     if run is None:
         db.rollback()
+        EXPERIMENT_RUN_OUTCOMES.labels(outcome="stale_lease_rejected").inc()
         return False
     call = db.get(LLMCall, call_id)
     if (
@@ -245,6 +259,7 @@ def _finalize_success(
     run.next_retry_at = None
     _clear_lease(run)
     db.commit()
+    EXPERIMENT_RUN_OUTCOMES.labels(outcome="completed").inc()
     logger.info(
         "experiment_run_completed",
         experiment_run_id=run.id,
@@ -266,6 +281,7 @@ def _finalize_failure(
     run = _owned_run(db, claim)
     if run is None:
         db.rollback()
+        EXPERIMENT_RUN_OUTCOMES.labels(outcome="stale_lease_rejected").inc()
         return False
     call = db.get(LLMCall, call_id) if call_id is not None else None
     if call is not None and (
@@ -292,6 +308,10 @@ def _finalize_failure(
         run.finished_at = now
         event = "experiment_run_failed"
     db.commit()
+    outcome = (
+        "retry_scheduled" if event == "experiment_run_retry_scheduled" else "failed"
+    )
+    EXPERIMENT_RUN_OUTCOMES.labels(outcome=outcome).inc()
     logger.warning(
         event,
         experiment_run_id=run.id,
@@ -299,6 +319,17 @@ def _finalize_failure(
         error=message,
     )
     return True
+
+
+def update_queue_metrics(db: Session) -> None:
+    """Публикует текущие размеры очереди по статусам одним GROUP BY."""
+    counts = {
+        status: count
+        for status, count in db.execute(
+            select(ExperimentRun.status, func.count()).group_by(ExperimentRun.status),
+        )
+    }
+    set_experiment_queue_counts(counts)
 
 
 def execute_claimed_run(

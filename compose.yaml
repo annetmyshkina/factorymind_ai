@@ -60,7 +60,43 @@ services:
       SIMULATOR_DELAY_RATE: ${SIMULATOR_DELAY_RATE:-0}
       SIMULATOR_DELAY_STEPS: ${SIMULATOR_DELAY_STEPS:-2}
 
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    container_name: factorymind-prometheus
+    profiles: ["observability"]
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.listen-address=127.0.0.1:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:13.3.1
+    container_name: factorymind-grafana
+    profiles: ["observability"]
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - prometheus
+    environment:
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+
 volumes:
   postgres_data:
   mosquitto_data:
   mosquitto_log:
+  prometheus_data:
+  grafana_data:

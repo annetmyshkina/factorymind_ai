@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     experiment_worker_poll_seconds: float = Field(default=1.0, gt=0)
     experiment_max_attempts: int = Field(default=3, gt=0)
     experiment_retry_base_seconds: int = Field(default=5, gt=0)
+    experiment_worker_metrics_host: str = "127.0.0.1"
+    experiment_worker_metrics_port: int = Field(default=9101, ge=1, le=65535)
 
     @model_validator(mode="after")
     def lease_covers_llm_timeout(self) -> "Settings":

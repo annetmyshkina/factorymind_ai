@@ -10,6 +10,7 @@ from app.ai.contracts import ChatMessage
 from app.ai.errors import LLMProviderError
 from app.ai.models import LLMCall
 from app.ai.providers.base import LLMProvider
+from app.observability.metrics import observe_llm_call
 
 logger = structlog.get_logger(__name__)
 
@@ -67,6 +68,12 @@ def execute_call(
         )
         db.add(call)
         db.commit()
+        observe_llm_call(
+            provider=call.provider,
+            status=call.status,
+            latency_ms=call.latency_ms,
+            error_type=call.error_type,
+        )
         db.refresh(call)
 
         logger.warning(
@@ -94,6 +101,13 @@ def execute_call(
     )
     db.add(call)
     db.commit()
+    observe_llm_call(
+        provider=call.provider,
+        status=call.status,
+        latency_ms=call.latency_ms,
+        prompt_tokens=call.prompt_tokens,
+        completion_tokens=call.completion_tokens,
+    )
     db.refresh(call)
 
     logger.info(

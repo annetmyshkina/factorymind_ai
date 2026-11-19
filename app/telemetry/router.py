@@ -12,6 +12,7 @@ from app.monitoring.service import (
     InvalidMonitoringRuleError,
     evaluate_telemetry,
 )
+from app.observability.metrics import observe_incident_created
 from app.telemetry.models import EquipmentTelemetry
 from app.telemetry.schemas import (
     TelemetryCreate,
@@ -64,11 +65,14 @@ def create_telemetry(
             ensure_incident_for_deviation(db, deviation)
 
         db.commit()
+        for severity in db.info.pop("auto_incident_severities", []):
+            observe_incident_created(source="automatic", severity=severity)
         db.refresh(telemetry)
         return telemetry
 
     except InvalidMonitoringRuleError:
         db.rollback()
+        db.info.pop("auto_incident_severities", None)
         logger.exception(
             "monitoring_rule_error",
             equipment_id=equipment_id,
@@ -80,6 +84,7 @@ def create_telemetry(
 
     except Exception:
         db.rollback()
+        db.info.pop("auto_incident_severities", None)
         raise
 
 

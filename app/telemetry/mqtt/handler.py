@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 from app.equipment.models import Equipment
 from app.incidents.automation import ensure_incident_for_deviation
 from app.monitoring.service import evaluate_telemetry
+from app.observability.metrics import (
+    observe_incident_created,
+    observe_mqtt_message,
+)
 from app.telemetry.models import EquipmentTelemetry, ProcessedMQTTEvent
 from app.telemetry.mqtt.schemas import MQTTTelemetryMessage
 
@@ -24,12 +28,14 @@ def handle_message(
     try:
         raw = json.loads(payload)
     except json.JSONDecodeError:
+        observe_mqtt_message("invalid_json")
         logger.warning("mqtt_invalid_json", payload=payload[:200])
         return
 
     try:
         message = MQTTTelemetryMessage.model_validate(raw)
     except ValidationError as exc:
+        observe_mqtt_message("invalid_schema")
         logger.warning("mqtt_invalid_schema", errors=exc.errors())
         return
 
@@ -37,6 +43,7 @@ def handle_message(
         topic_equipment_code is not None
         and message.equipment_code != topic_equipment_code
     ):
+        observe_mqtt_message("equipment_mismatch")
         logger.warning(
             "mqtt_equipment_code_mismatch",
             topic_equipment_code=topic_equipment_code,
@@ -46,6 +53,7 @@ def handle_message(
         return
 
     if db.get(ProcessedMQTTEvent, message.event_id) is not None:
+        observe_mqtt_message("duplicate")
         logger.info("mqtt_duplicate_event", event_id=message.event_id)
         return
 
@@ -53,6 +61,7 @@ def handle_message(
         select(Equipment).where(Equipment.code == message.equipment_code),
     )
     if equipment is None:
+        observe_mqtt_message("unknown_equipment")
         logger.warning(
             "mqtt_unknown_equipment",
             equipment_code=message.equipment_code,
@@ -78,7 +87,15 @@ def handle_message(
     db.flush()
     for deviation in evaluate_telemetry(db, telemetry):
         ensure_incident_for_deviation(db, deviation)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.info.pop("auto_incident_severities", None)
+        raise
+
+    for severity in db.info.pop("auto_incident_severities", []):
+        observe_incident_created(source="automatic", severity=severity)
+    observe_mqtt_message("saved")
 
     logger.info(
         "mqtt_telemetry_saved",

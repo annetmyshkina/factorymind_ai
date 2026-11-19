@@ -2,6 +2,7 @@ import paho.mqtt.client as mqtt
 import structlog
 from sqlalchemy.orm import sessionmaker
 
+from app.observability.metrics import MQTT_CONNECTED, observe_mqtt_message
 from app.telemetry.mqtt.handler import handle_message
 
 logger = structlog.get_logger(__name__)
@@ -45,6 +46,7 @@ class MQTTSubscriber:
         self._topic = topic
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self._client.on_connect = self._on_connect
+        self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
 
     def start(self) -> None:
@@ -55,18 +57,34 @@ class MQTTSubscriber:
     def stop(self) -> None:
         self._client.loop_stop()
         self._client.disconnect()
+        MQTT_CONNECTED.set(0)
         logger.info("mqtt_subscriber_stopped")
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code == 0:
+            MQTT_CONNECTED.set(1)
             client.subscribe(self._topic)
             logger.info("mqtt_subscribed", topic=self._topic)
         else:
+            MQTT_CONNECTED.set(0)
             logger.error("mqtt_connect_failed", reason_code=reason_code)
+
+    def _on_disconnect(
+        self,
+        client,
+        userdata,
+        disconnect_flags,
+        reason_code,
+        properties,
+    ) -> None:
+        del client, userdata, disconnect_flags, properties
+        MQTT_CONNECTED.set(0)
+        logger.warning("mqtt_disconnected", reason_code=reason_code)
 
     def _on_message(self, client, userdata, msg):
         equipment_code = equipment_code_from_topic(self._topic, msg.topic)
         if equipment_code is None:
+            observe_mqtt_message("unexpected_topic")
             logger.warning(
                 "mqtt_unexpected_topic",
                 topic=msg.topic,
@@ -83,4 +101,6 @@ class MQTTSubscriber:
                 )
             except Exception:
                 db.rollback()
+                db.info.pop("auto_incident_severities", None)
+                observe_mqtt_message("handler_error")
                 logger.exception("mqtt_handler_error", topic=msg.topic)

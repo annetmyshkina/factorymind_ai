@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from threading import Event
 
 import pytest
+from prometheus_client import REGISTRY
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -25,6 +26,7 @@ from app.experiments.queue import (
     claim_next_run,
     execute_claimed_run,
     recover_expired_runs,
+    update_queue_metrics,
 )
 from app.experiments.service import create_experiment, get_experiment_detail
 
@@ -445,3 +447,26 @@ def test_worker_id_contains_process_identity() -> None:
     worker_id = worker.make_worker_id()
 
     assert worker_id.count(":") == 2
+
+
+def test_queue_metrics_include_zero_for_absent_statuses(
+    db_session: Session,
+) -> None:
+    _run(db_session)
+
+    update_queue_metrics(db_session)
+
+    assert (
+        REGISTRY.get_sample_value(
+            "factorymind_experiment_queue_runs",
+            {"status": "pending"},
+        )
+        == 1
+    )
+    assert (
+        REGISTRY.get_sample_value(
+            "factorymind_experiment_queue_runs",
+            {"status": "running"},
+        )
+        == 0
+    )

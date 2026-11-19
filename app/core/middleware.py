@@ -3,6 +3,8 @@ import uuid
 
 import structlog
 
+from app.observability.metrics import observe_http_request
+
 logger = structlog.get_logger(__name__)
 
 REQUEST_ID_HEADER = "x-request-id"
@@ -67,6 +69,7 @@ class RequestContextMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         except Exception:
+            status_code = status_code or 500
             logger.exception(
                 "http_request_failed",
                 duration_ms=round((time.perf_counter() - start) * 1000, 1),
@@ -79,4 +82,13 @@ class RequestContextMiddleware:
                 duration_ms=round((time.perf_counter() - start) * 1000, 1),
             )
         finally:
+            if scope.get("path") != "/metrics":
+                route = scope.get("route")
+                route_template = getattr(route, "path", None) or "unmatched"
+                observe_http_request(
+                    method=scope.get("method", "UNKNOWN"),
+                    route=route_template,
+                    status_code=status_code or 500,
+                    duration_seconds=time.perf_counter() - start,
+                )
             structlog.contextvars.clear_contextvars()

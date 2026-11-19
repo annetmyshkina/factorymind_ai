@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
+from prometheus_client import REGISTRY
 
 from app.telemetry.mqtt.client import MQTTSubscriber, equipment_code_from_topic
 
@@ -17,6 +18,20 @@ def test_subscriber_uses_configured_topic() -> None:
     subscriber._on_connect(client, None, None, 0, None)
 
     client.subscribe.assert_called_once_with("plant/+/metrics")
+    assert REGISTRY.get_sample_value("factorymind_mqtt_connected") == 1
+
+
+def test_subscriber_reports_disconnect() -> None:
+    subscriber = MQTTSubscriber(
+        session_factory=Mock(),
+        host="mqtt.test",
+        port=1883,
+        topic="plant/+/metrics",
+    )
+
+    subscriber._on_disconnect(Mock(), None, None, 1, None)
+
+    assert REGISTRY.get_sample_value("factorymind_mqtt_connected") == 0
 
 
 def test_equipment_code_is_extracted_from_configured_topic() -> None:

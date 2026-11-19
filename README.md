@@ -12,7 +12,7 @@
 ## Стек
 
 FastAPI, SQLAlchemy 2, Alembic, PostgreSQL 17, Mosquitto (paho-mqtt), React,
-TypeScript, Vite, structlog, pytest, ruff, uv.
+TypeScript, Vite, structlog, Prometheus, Grafana, pytest, ruff, uv.
 
 ## Быстрый старт
 
@@ -76,11 +76,47 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 миграции к PostgreSQL, проверяет отсутствие расхождений схемы (`alembic check`)
 и обратимость миграций (`downgrade base` → `upgrade head`).
 
+## Наблюдаемость
+
+API публикует Prometheus-метрики на <http://127.0.0.1:8000/metrics>. Отдельный
+experiment worker публикует свои метрики на `127.0.0.1:9101`; сервер метрик
+запускается вместе с `make worker`.
+
+Для полного локального контура запустите процессы в отдельных терминалах:
+
+```bash
+make run
+make worker
+make observability-start
+```
+
+После запуска доступны:
+
+- Prometheus: <http://127.0.0.1:9090>;
+- Grafana: <http://127.0.0.1:3000>;
+- готовый dashboard `FactoryMind AI — Overview` в папке `FactoryMind AI`.
+
+Локальные логин и пароль Grafana по умолчанию — `admin`/`admin`; их можно изменить
+через `GRAFANA_ADMIN_USER` и `GRAFANA_ADMIN_PASSWORD`. Профиль использует host
+network, чтобы контейнер Prometheus мог собирать метрики процессов, запущенных на
+Linux-хосте. Метрики включают HTTP rate/latency/errors, результаты обработки MQTT,
+создание инцидентов, LLM-вызовы и токены, очередь экспериментов, retry, lease
+recovery и состояние worker-а. Значения идентификаторов оборудования, инцидентов и
+непараметризованные URL не используются как labels.
+
+Остановка и просмотр логов:
+
+```bash
+make observability-logs
+make observability-stop
+```
+
 ## API
 
 | Метод | Путь | Назначение |
 | --- | --- | --- |
 | `GET` | `/health` | Проверка живости |
+| `GET` | `/metrics` | Метрики API в формате Prometheus |
 | `POST` | `/equipment` | Создать оборудование |
 | `GET` | `/equipment` | Список оборудования |
 | `GET` | `/equipment/{id}` | Карточка оборудования |
@@ -204,7 +240,9 @@ app/
   ai/            AI Gateway: контракты и провайдеры LLM
   experiments/   запуск экспериментов, оценки и отчёты
   knowledge/     документы, обработка, применимость и retrieval
+  observability/ Prometheus-метрики и технический endpoint
 frontend/        React/TypeScript интерфейс оператора
+deploy/          конфигурация Prometheus и provisioning Grafana
 simulator/       внешний генератор синтетической MQTT-телеметрии
 tests/           pytest, SQLite in-memory
 migrations/      Alembic
