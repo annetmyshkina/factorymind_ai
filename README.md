@@ -96,6 +96,13 @@ make observability-start
 - Grafana: <http://127.0.0.1:3000>;
 - готовый dashboard `FactoryMind AI — Overview` в папке `FactoryMind AI`.
 
+Быстрая проверка готовности сервисов:
+
+```bash
+curl -fsS http://127.0.0.1:9090/-/ready
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
 Локальные логин и пароль Grafana по умолчанию — `admin`/`admin`; их можно изменить
 через `GRAFANA_ADMIN_USER` и `GRAFANA_ADMIN_PASSWORD`. Профиль использует host
 network, чтобы контейнер Prometheus мог собирать метрики процессов, запущенных на
