@@ -80,7 +80,8 @@ CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request
 
 API публикует Prometheus-метрики на <http://127.0.0.1:8000/metrics>. Отдельный
 experiment worker публикует свои метрики на `127.0.0.1:9101`; сервер метрик
-запускается вместе с `make worker`.
+запускается вместе с `make worker`. Notification worker использует
+`127.0.0.1:9102`.
 
 Для полного локального контура запустите процессы в отдельных терминалах:
 
@@ -117,6 +118,36 @@ recovery и состояние worker-а. Значения идентифика�
 make observability-logs
 make observability-stop
 ```
+
+## Telegram-уведомления
+
+Telegram-контур по умолчанию отключён и не требует внешней сети. После включения
+система отправляет сообщения о новых автоматических инцидентах `high`/`critical`,
+а также об их переходе в `resolved` и `closed`. Ручные и менее критичные инциденты
+уведомлений не создают.
+
+Добавьте настройки в локальный `.env`:
+
+```env
+TELEGRAM_NOTIFICATIONS_ENABLED=true
+TELEGRAM_BOT_TOKEN=токен_бота
+TELEGRAM_CHAT_ID=идентификатор_чата
+PUBLIC_APP_BASE_URL=http://адрес-приложения/ui
+```
+
+Примените миграцию и запустите отдельный процесс:
+
+```bash
+uv run alembic upgrade head
+make notification-worker
+```
+
+API не ждёт Telegram: событие записывается в PostgreSQL outbox в одной транзакции
+с изменением инцидента. Worker захватывает записи через lease, выполняет до трёх
+попыток с exponential backoff и восстанавливает задания после сбоя. Гарантия
+доставки — at-least-once: если Telegram принял сообщение, а процесс завершился до
+фиксации результата в PostgreSQL, сообщение может быть отправлено повторно.
+Токен не сохраняется в БД и не включается в ошибки или логи.
 
 ## API
 
@@ -247,6 +278,7 @@ app/
   ai/            AI Gateway: контракты и провайдеры LLM
   experiments/   запуск экспериментов, оценки и отчёты
   knowledge/     документы, обработка, применимость и retrieval
+  notifications/ PostgreSQL outbox, Telegram-клиент и worker доставки
   observability/ Prometheus-метрики и технический endpoint
 frontend/        React/TypeScript интерфейс оператора
 deploy/          конфигурация Prometheus и provisioning Grafana

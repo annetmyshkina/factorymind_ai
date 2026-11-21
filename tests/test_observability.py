@@ -91,6 +91,8 @@ def test_grafana_dashboard_is_valid_and_covers_core_flows() -> None:
         "Созданные инциденты",
         "LLM-вызовы и latency",
         "Очередь экспериментов",
+        "Очередь уведомлений",
+        "Доставка Telegram",
     } <= panel_titles
 
     expressions = {
@@ -102,3 +104,4 @@ def test_grafana_dashboard_is_valid_and_covers_core_flows() -> None:
     assert any("factorymind_mqtt_messages_total" in expr for expr in expressions)
     assert any("factorymind_llm_calls_total" in expr for expr in expressions)
     assert any("factorymind_experiment_queue_runs" in expr for expr in expressions)
+    assert any("factorymind_notification_queue_items" in expr for expr in expressions)

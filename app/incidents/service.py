@@ -10,6 +10,7 @@ from app.incidents.models import (
     IncidentEvent,
 )
 from app.monitoring.models import EquipmentDeviation
+from app.notifications.service import enqueue_created_incident, enqueue_final_status
 from app.observability.metrics import observe_incident_created
 
 logger = structlog.get_logger(__name__)
@@ -43,6 +44,7 @@ def add_incident(
     description: str | None = None,
     severity: str = "medium",
     assigned_to: str | None = None,
+    source: str = "manual",
 ) -> Incident:
     """Добавляет инцидент и событие 'created' в сессию без commit."""
     incident = Incident(
@@ -56,13 +58,15 @@ def add_incident(
     db.add(incident)
     db.flush()
 
-    db.add(
-        IncidentEvent(
-            incident_id=incident.id,
-            event_type="created",
-            payload={"severity": severity, "title": title},
-        )
+    event = IncidentEvent(
+        incident_id=incident.id,
+        event_type="created",
+        payload={"severity": severity, "title": title, "source": source},
     )
+    db.add(event)
+    db.flush()
+    if source == "automatic":
+        enqueue_created_incident(db, incident=incident, event=event)
     return incident
 
 
@@ -126,17 +130,18 @@ def change_status(
     elif new_status in {"open", "in_progress"}:
         incident.resolved_at = None
 
-    db.add(
-        IncidentEvent(
-            incident_id=incident.id,
-            event_type="status_changed",
-            payload={
-                "from": old_status,
-                "to": new_status,
-                "actor": actor or "system",
-            },
-        )
+    event = IncidentEvent(
+        incident_id=incident.id,
+        event_type="status_changed",
+        payload={
+            "from": old_status,
+            "to": new_status,
+            "actor": actor or "system",
+        },
     )
+    db.add(event)
+    db.flush()
+    enqueue_final_status(db, incident=incident, event=event)
 
     return incident
 

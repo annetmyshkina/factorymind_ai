@@ -79,6 +79,37 @@ EXPERIMENT_WORKER_ITERATION_ERRORS = Counter(
 
 EXPERIMENT_RUN_STATUSES = ("pending", "running", "completed", "failed")
 
+NOTIFICATIONS_ENQUEUED = Counter(
+    "factorymind_notifications_enqueued_total",
+    "Количество уведомлений, записанных в outbox.",
+    ("event_type",),
+)
+NOTIFICATION_DELIVERIES = Counter(
+    "factorymind_notification_deliveries_total",
+    "Результаты попыток доставки уведомлений.",
+    ("outcome",),
+)
+NOTIFICATION_LEASE_RECOVERIES = Counter(
+    "factorymind_notification_lease_recoveries_total",
+    "Количество восстановленных lease notification worker-а.",
+    ("outcome",),
+)
+NOTIFICATION_QUEUE_ITEMS = Gauge(
+    "factorymind_notification_queue_items",
+    "Текущее количество уведомлений по статусам.",
+    ("status",),
+)
+NOTIFICATION_WORKER_UP = Gauge(
+    "factorymind_notification_worker_up",
+    "Состояние notification worker-а: 1 — работает, 0 — остановлен.",
+)
+NOTIFICATION_WORKER_ITERATION_ERRORS = Counter(
+    "factorymind_notification_worker_iteration_errors_total",
+    "Количество необработанных ошибок notification worker-а.",
+)
+
+NOTIFICATION_STATUSES = ("pending", "running", "sent", "failed")
+
 
 def observe_http_request(
     *,
@@ -131,3 +162,9 @@ def set_experiment_queue_counts(counts: Mapping[str, int]) -> None:
     """Обновляет gauge очереди, включая отсутствующие в выборке статусы."""
     for status in EXPERIMENT_RUN_STATUSES:
         EXPERIMENT_QUEUE_RUNS.labels(status=status).set(counts.get(status, 0))
+
+
+def set_notification_queue_counts(counts: Mapping[str, int]) -> None:
+    """Обновляет gauge notification outbox по всем допустимым статусам."""
+    for status in NOTIFICATION_STATUSES:
+        NOTIFICATION_QUEUE_ITEMS.labels(status=status).set(counts.get(status, 0))

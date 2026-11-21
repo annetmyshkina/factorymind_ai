@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 # Команды приложения
-.PHONY: help install run dev worker lint format check lint-fix test coverage logs frontend-install frontend-dev frontend-build simulator-run simulator-start simulator-stop simulator-logs observability-start observability-stop observability-logs
+.PHONY: help install run dev worker notification-worker lint format check lint-fix test coverage logs frontend-install frontend-dev frontend-build simulator-run simulator-start simulator-stop simulator-logs observability-start observability-stop observability-logs
 
 # Команды работы с базой данных
 .PHONY: db-init db-check db-revision db-history db-upgrade db-shell db-start
@@ -17,6 +17,7 @@ help:
 	@echo "  make run                 - запустить FastAPI"
 	@echo "  make dev                 - запустить backend и frontend вместе (Ctrl+C — стоп)"
 	@echo "  make worker              - запустить worker экспериментов"
+	@echo "  make notification-worker - запустить worker Telegram-уведомлений"
 	@echo "  make lint                - проверить код"
 	@echo "  make format              - отформатировать код"
 	@echo "  make check               - выполнить все проверки"
@@ -58,6 +59,9 @@ dev:
 
 worker:
 	uv run python -m app.experiments.worker
+
+notification-worker:
+	uv run python -m app.notifications.worker
 
 lint:
 	uv run ruff check .

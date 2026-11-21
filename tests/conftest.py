@@ -17,6 +17,7 @@ from app.equipment import models as equipment_models  # noqa: F401
 from app.knowledge import models as knowledge_models  # noqa: F401
 from app.main import app
 from app.monitoring import models as monitoring_models  # noqa: F401
+from app.notifications import models as notification_models  # noqa: F401
 from app.telemetry import models as telemetry_models  # noqa: F401
 
 

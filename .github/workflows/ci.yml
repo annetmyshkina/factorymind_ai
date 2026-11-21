@@ -142,7 +142,7 @@ jobs:
           uv run alembic upgrade head
 
   experiment-worker-postgres:
-    name: Experiment worker on isolated PostgreSQL
+    name: Worker queues on isolated PostgreSQL
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -183,4 +183,7 @@ jobs:
         run: uv run alembic upgrade head
 
       - name: Test concurrent claims and lease recovery
-        run: uv run pytest tests/test_experiment_worker_postgres.py
+        run: >-
+          uv run pytest
+          tests/test_experiment_worker_postgres.py
+          tests/test_notification_worker_postgres.py

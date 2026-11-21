@@ -46,6 +46,10 @@ from app.incidents.service import (
     create_incident,
     link_deviation,
 )
+from app.notifications.service import (
+    discard_pending_notification_metrics,
+    observe_committed_notifications,
+)
 
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
 
@@ -205,6 +209,7 @@ def update_incident(
             assign(db, incident, payload.assigned_to)
 
         db.commit()
+        observe_committed_notifications(db)
 
         if payload.status is not None and payload.status != old_status:
             logger.info(
@@ -216,12 +221,14 @@ def update_incident(
             )
     except InvalidTransitionError as exc:
         db.rollback()
+        discard_pending_notification_metrics(db)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
     except Exception:
         db.rollback()
+        discard_pending_notification_metrics(db)
         raise
 
     return _load_incident(db, incident_id)

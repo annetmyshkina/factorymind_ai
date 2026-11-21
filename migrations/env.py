@@ -8,6 +8,7 @@ from app.equipment import models as equipment_models  # noqa: F401
 from app.incidents import models as incidents_models  # noqa: F401
 from app.knowledge import models as knowledge_models  # noqa: F401
 from app.monitoring.models import EquipmentDeviation, MonitoringRule  # noqa: F401
+from app.notifications import models as notification_models  # noqa: F401
 from app.telemetry import models as telemetry_models  # noqa: F401
 
 config = context.config

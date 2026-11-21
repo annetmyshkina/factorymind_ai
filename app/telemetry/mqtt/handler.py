@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 from app.equipment.models import Equipment
 from app.incidents.automation import ensure_incident_for_deviation
 from app.monitoring.service import evaluate_telemetry
+from app.notifications.service import (
+    discard_pending_notification_metrics,
+    observe_committed_notifications,
+)
 from app.observability.metrics import (
     observe_incident_created,
     observe_mqtt_message,
@@ -90,9 +94,11 @@ def handle_message(
     try:
         db.commit()
     except Exception:
+        discard_pending_notification_metrics(db)
         db.info.pop("auto_incident_severities", None)
         raise
 
+    observe_committed_notifications(db)
     for severity in db.info.pop("auto_incident_severities", []):
         observe_incident_created(source="automatic", severity=severity)
     observe_mqtt_message("saved")

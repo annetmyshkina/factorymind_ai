@@ -2,6 +2,7 @@ import paho.mqtt.client as mqtt
 import structlog
 from sqlalchemy.orm import sessionmaker
 
+from app.notifications.service import discard_pending_notification_metrics
 from app.observability.metrics import MQTT_CONNECTED, observe_mqtt_message
 from app.telemetry.mqtt.handler import handle_message
 
@@ -101,6 +102,7 @@ class MQTTSubscriber:
                 )
             except Exception:
                 db.rollback()
+                discard_pending_notification_metrics(db)
                 db.info.pop("auto_incident_severities", None)
                 observe_mqtt_message("handler_error")
                 logger.exception("mqtt_handler_error", topic=msg.topic)

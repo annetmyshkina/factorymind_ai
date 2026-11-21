@@ -346,6 +346,7 @@ def test_events_logged(
     assert events[0]["payload"] == {
         "severity": "high",
         "title": "Test incident",
+        "source": "manual",
     }
     assert events[1]["payload"] == {
         "from": "open",

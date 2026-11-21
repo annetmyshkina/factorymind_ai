@@ -84,6 +84,7 @@ def ensure_incident_for_deviation(
                 deviation.metric_name,
                 DEFAULT_INCIDENT_SEVERITY,
             ),
+            source="automatic",
         )
         db.info.setdefault("auto_incident_severities", []).append(incident.severity)
         logger.info(
