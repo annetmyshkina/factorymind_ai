@@ -1,1 +1,1 @@
-"""Детерминированные офлайн-бенчмарки качества FactoryMind AI."""
+"""Офлайн-бенчмарки и калибровка Evaluation Engine FactoryMind AI."""

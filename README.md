@@ -71,6 +71,27 @@ uv run python -m app.evaluation.cli benchmarks/rag/retrieval-v1.json
 uv run python -m app.evaluation.answer_cli benchmarks/rag/answers-v1.json
 ```
 
+Контур LLM-as-a-Judge запускает повторную слепую оценку записанных примеров и
+сравнивает её с версионированной разметкой:
+
+```bash
+uv run python -m app.evaluation.judge_cli \
+  benchmarks/judge/incident-analysis-v1.json \
+  --provider ollama \
+  --model llama3.1 \
+  --repeats 3 \
+  > judge-report.json
+```
+
+Стартовый suite имеет `label_provenance=synthetic`, поэтому используется только
+для проверки контура и всегда получает статус `development_only`. Для допуска
+конкретной модели-судьи инженер по оборудованию должен проверить баллы и пояснения,
+после чего создать новую версию suite с `label_provenance=expert_reviewed` и своим
+идентификатором в `expert_approvers`. Калибровка относится только к зафиксированным
+модели, рубрике, suite и параметрам; она не подтверждает безопасность ответа.
+Эксплуатационный допуск требует не менее 12 экспертно размеченных кейсов и минимум
+двух примеров каждого уровня `0/1/2` по каждому критерию.
+
 CI (`.github/workflows/ci.yml`) на каждый push в `main` и pull request прогоняет
 линтер, проверку форматирования и тесты с покрытием. Отдельная job применяет
 миграции к PostgreSQL, проверяет отсутствие расхождений схемы (`alembic check`)
@@ -277,12 +298,14 @@ app/
   incidents/     инциденты, AI-анализ, feedback и подтверждённые результаты
   ai/            AI Gateway: контракты и провайдеры LLM
   experiments/   запуск экспериментов, оценки и отчёты
+  evaluation/    детерминированные benchmark и калибровка LLM-судьи
   knowledge/     документы, обработка, применимость и retrieval
   notifications/ PostgreSQL outbox, Telegram-клиент и worker доставки
   observability/ Prometheus-метрики и технический endpoint
 frontend/        React/TypeScript интерфейс оператора
 deploy/          конфигурация Prometheus и provisioning Grafana
 simulator/       внешний генератор синтетической MQTT-телеметрии
+benchmarks/      версионированные наборы retrieval, ответов и judge-калибровки
 tests/           pytest, SQLite in-memory
 migrations/      Alembic
 docs/            документация
