@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { getApiBase, loadDashboard, saveApiBase } from "./api";
+import { AUTH_EXPIRED_EVENT, getAccessToken, getApiBase, loadCurrentUser, loadDashboard, login, logout, saveApiBase } from "./api";
 import { documentTypeLabels, severityLabels, statusLabels } from "./demo";
 import IncidentDrawer from "./IncidentDrawer";
 import { useNavigation } from "./navigation";
 import type { IncidentFilter } from "./navigation";
-import type { DashboardData, Equipment, Incident, IncidentSeverity, Telemetry, View } from "./types";
+import type { CurrentUser, DashboardData, Equipment, Incident, IncidentSeverity, Telemetry, UserRole, View } from "./types";
+
+const roleLabels: Record<UserRole, string> = {
+  viewer: "Наблюдатель",
+  operator: "Оператор",
+  engineer: "Инженер",
+  admin: "Администратор",
+};
 
 const viewMeta: Record<View, { label: string; hint: string; icon: string }> = {
   overview: { label: "Обзор", hint: "Состояние производства", icon: "grid" },
@@ -63,6 +70,43 @@ function StatusBadge({ value }: { value: Incident["status"] }) {
 
 function Empty({ title, copy }: { title: string; copy: string }) {
   return <div className="empty"><div className="empty-icon"><Icon name="pulse" /></div><strong>{title}</strong><span>{copy}</span></div>;
+}
+
+function LoginView({ onAuthenticated }: { onAuthenticated: (user: CurrentUser) => void }) {
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("admin");
+  const [apiBase, setApiBase] = useState(getApiBase());
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    saveApiBase(apiBase);
+    try {
+      onAuthenticated(await login(username, password));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось войти");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return <main className="login-page">
+    <section className="login-card">
+      <div className="login-brand"><div className="brand-mark"><span /><span /><span /></div><div><strong>FactoryMind</strong><small>OPERATIONS</small></div></div>
+      <div className="login-copy"><p className="eyebrow">Контур производства</p><h1>Вход в систему</h1><p>Авторизуйтесь, чтобы открыть оперативные данные и доступные вашей роли действия.</p></div>
+      <form onSubmit={submit}>
+        <label>Логин<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
+        <label>Пароль<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        <label>Адрес API <span>(необязательно)</span><input value={apiBase} onChange={(event) => setApiBase(event.target.value)} placeholder="Текущий домен / Vite proxy" /></label>
+        {error && <div className="login-error" role="alert"><Icon name="alert" size={18} /><span>{error}</span></div>}
+        <button className="primary-button login-submit" type="submit" disabled={submitting}>{submitting ? "Проверяем…" : "Войти"}</button>
+      </form>
+      <footer>Локальный development: <code>admin / admin</code></footer>
+    </section>
+  </main>;
 }
 
 function activateOnKeyboard(event: React.KeyboardEvent, action: () => void) {
@@ -206,6 +250,8 @@ export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [mode, setMode] = useState<"live" | "demo">("demo");
   const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const selectedIncident = data?.incidents.find((item) => item.id === incidentId) ?? null;
   const setView = (next: View) => navigate({ view: next, incidentId: null });
@@ -220,21 +266,47 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!getAccessToken()) {
+      setAuthLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    void loadCurrentUser(controller.signal)
+      .then(setCurrentUser)
+      .catch(() => logout())
+      .finally(() => setAuthLoading(false));
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const expire = () => setCurrentUser(null);
+    window.addEventListener(AUTH_EXPIRED_EVENT, expire);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, expire);
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
     const controller = new AbortController();
     void refresh(controller.signal).catch(() => undefined);
     return () => controller.abort();
-  }, [refresh]);
+  }, [currentUser, refresh]);
   const activeIncidents = useMemo(() => data?.incidents.filter((item) => ["open", "in_progress"].includes(item.status)).length ?? 0, [data]);
   const title = viewMeta[view];
   const closeIncident = useCallback(() => navigate({ incidentId: null }), [navigate]);
 
+  if (authLoading) return <div className="loading auth-loading"><span /><p>Проверяем сессию…</p></div>;
+  if (!currentUser) return <LoginView onAuthenticated={setCurrentUser} />;
+
+  const displayName = currentUser.full_name ?? currentUser.username;
+  const initials = displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+
   return <div className="app-shell">
     <aside className="sidebar"><div className="brand"><div className="brand-mark"><span /><span /><span /></div><div><strong>FactoryMind</strong><small>OPERATIONS</small></div></div><nav aria-label="Основная навигация">{(Object.keys(viewMeta) as View[]).map((key) => <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)} title={viewMeta[key].hint}><Icon name={viewMeta[key].icon} /><span>{viewMeta[key].label}</span>{key === "incidents" && activeIncidents > 0 && <b>{activeIncidents}</b>}</button>)}</nav><div className="sidebar-footer"><span className="system-light" /><div><strong>Система контроля</strong><small>{mode === "live" ? "API подключён" : "Демонстрация"}</small></div></div></aside>
-    <div className="workspace"><header className="topbar"><div className="page-title"><p>{title.hint}</p><h1>{title.label}</h1></div><div className="topbar-actions"><div className={`connection connection-${mode}`}><span />{mode === "live" ? "Данные в реальном времени" : "Демоданные"}</div><button className="icon-button" onClick={() => void refresh()} disabled={loading} aria-label="Обновить данные" title="Обновить"><Icon name="refresh" /></button><button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Настройки API" title="Настройки API"><Icon name="settings" /></button><div className="shift"><span>Смена 2</span><strong>{new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(new Date())}</strong></div><div className="avatar">ДИ</div></div></header>
+    <div className="workspace"><header className="topbar"><div className="page-title"><p>{title.hint}</p><h1>{title.label}</h1></div><div className="topbar-actions"><div className={`connection connection-${mode}`}><span />{mode === "live" ? "Данные в реальном времени" : "Демоданные"}</div><button className="icon-button" onClick={() => void refresh()} disabled={loading} aria-label="Обновить данные" title="Обновить"><Icon name="refresh" /></button><button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Настройки API" title="Настройки API"><Icon name="settings" /></button><div className="shift"><span>Смена 2</span><strong>{new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(new Date())}</strong></div><div className="user-chip"><div className="avatar">{initials}</div><div><strong>{displayName}</strong><span>{roleLabels[currentUser.role]}</span></div><button type="button" onClick={() => { logout(); setCurrentUser(null); setData(null); }} title="Выйти из системы">Выйти</button></div></div></header>
       {mode === "demo" && <div className="demo-banner"><div><Icon name="alert" size={18} /><span><strong>Демонстрационный режим.</strong> Backend недоступен; показаны иллюстративные, а не производственные данные.</span></div><button onClick={() => setSettingsOpen(true)}>Подключить API</button></div>}
       <main>{loading && !data ? <div className="loading"><span /><p>Загружаем оперативные данные…</p></div> : data ? <>{view === "overview" && <Overview data={data} onNavigate={setView} onOpenIncident={openIncident} />}{view === "equipment" && <EquipmentView data={data} />}{view === "incidents" && <IncidentsView data={data} filter={filter} onFilterChange={(next) => navigate({ filter: next })} onOpenIncident={openIncident} />}{view === "knowledge" && <KnowledgeView data={data} />}{view === "quality" && <QualityView data={data} />}</> : <Empty title="Не удалось загрузить интерфейс" copy="Проверьте подключение к API и обновите страницу." />}</main>
     </div>
     {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} onApply={() => void refresh()} />}
-    {selectedIncident && <IncidentDrawer incident={selectedIncident} mode={mode} onClose={closeIncident} onChanged={() => refresh()} />}
+    {selectedIncident && <IncidentDrawer incident={selectedIncident} mode={mode} role={currentUser.role} onClose={closeIncident} onChanged={() => refresh()} />}
   </div>;
 }

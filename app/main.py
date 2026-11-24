@@ -4,6 +4,7 @@ import structlog
 from fastapi import FastAPI
 
 from app.api.router import api_router
+from app.auth.service import ensure_bootstrap_admin
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.logging import configure_logging
@@ -21,6 +22,18 @@ async def lifespan(app: FastAPI):
     subscriber: MQTTSubscriber | None = None
 
     if settings.environment != "test":
+        if settings.auth_bootstrap_enabled:
+            with SessionLocal() as db:
+                admin, created = ensure_bootstrap_admin(
+                    db,
+                    username=settings.auth_bootstrap_username,
+                    password=settings.auth_bootstrap_password.get_secret_value(),
+                )
+            if created:
+                logger.warning(
+                    "development_admin_created",
+                    username=admin.username,
+                )
         subscriber = MQTTSubscriber(
             session_factory=SessionLocal,
             host=settings.mqtt_host,

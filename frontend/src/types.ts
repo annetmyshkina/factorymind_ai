@@ -191,3 +191,14 @@ export interface DashboardData {
 }
 
 export type DataMode = "live" | "demo";
+
+export type UserRole = "viewer" | "operator" | "engineer" | "admin";
+
+export interface CurrentUser {
+  id: number;
+  username: string;
+  full_name: string | null;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+}

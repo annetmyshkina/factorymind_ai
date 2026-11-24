@@ -7,6 +7,12 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.ai.errors import ProviderNotConfiguredError, UnknownProviderError
 from app.ai.providers.factory import build_provider
+from app.auth.dependencies import (
+    CurrentUser,
+    require_authenticated,
+    require_engineer,
+    require_operator,
+)
 from app.core.config import settings
 from app.core.database import get_db
 from app.equipment.models import Equipment
@@ -51,7 +57,11 @@ from app.notifications.service import (
     observe_committed_notifications,
 )
 
-router = APIRouter(prefix="/incidents", tags=["Incidents"])
+router = APIRouter(
+    prefix="/incidents",
+    tags=["Incidents"],
+    dependencies=[Depends(require_authenticated)],
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -87,9 +97,11 @@ def _load_incident(
     "",
     response_model=IncidentResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_operator)],
 )
 def create(
     payload: IncidentCreate,
+    current_user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> IncidentResponse:
     """Создаёт инцидент для оборудования."""
@@ -106,6 +118,7 @@ def create(
         description=payload.description,
         severity=payload.severity,
         assigned_to=payload.assigned_to,
+        actor=current_user.username,
     )
     return _load_incident(db, incident.id)
 
@@ -175,10 +188,15 @@ def get_incident(
     )
 
 
-@router.patch("/{incident_id}", response_model=IncidentResponse)
+@router.patch(
+    "/{incident_id}",
+    response_model=IncidentResponse,
+    dependencies=[Depends(require_operator)],
+)
 def update_incident(
     incident_id: int,
     payload: IncidentUpdate,
+    current_user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> IncidentResponse:
     """Обновляет статус/исполнителя/severity."""
@@ -189,7 +207,12 @@ def update_incident(
         # Сначала проверяем и применяем переход статуса: при конфликте остальные
         # поля запроса ещё не успеют изменить состояние сессии.
         if payload.status is not None:
-            change_status(db, incident, payload.status)
+            change_status(
+                db,
+                incident,
+                payload.status,
+                actor=current_user.username,
+            )
             if payload.status in {"open", "in_progress"} and old_status in {
                 "resolved",
                 "closed",
@@ -197,6 +220,8 @@ def update_incident(
                 revoke_resolution_on_incident_reopen(
                     db,
                     incident_id=incident.id,
+                    actor=current_user.username,
+                    actor_verified=True,
                 )
 
         if payload.severity is not None:
@@ -206,7 +231,12 @@ def update_incident(
             incident.description = payload.description
 
         if "assigned_to" in payload.model_fields_set:
-            assign(db, incident, payload.assigned_to)
+            assign(
+                db,
+                incident,
+                payload.assigned_to,
+                actor=current_user.username,
+            )
 
         db.commit()
         observe_committed_notifications(db)
@@ -217,7 +247,7 @@ def update_incident(
                 incident_id=incident.id,
                 from_status=old_status,
                 to_status=payload.status,
-                actor="system",
+                actor=current_user.username,
             )
     except InvalidTransitionError as exc:
         db.rollback()
@@ -237,16 +267,23 @@ def update_incident(
 @router.post(
     "/{incident_id}/deviations",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_operator)],
 )
 def add_deviation(
     incident_id: int,
     payload: LinkDeviationRequest,
+    current_user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> None:
     """Привязывает отклонение к инциденту (идемпотентно)."""
     incident = _load_incident(db, incident_id)
     try:
-        link_deviation(db, incident, payload.deviation_id)
+        link_deviation(
+            db,
+            incident,
+            payload.deviation_id,
+            actor=current_user.username,
+        )
     except DeviationNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -263,6 +300,7 @@ def add_deviation(
     "/{incident_id}/analyses",
     response_model=IncidentAnalysisResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_engineer)],
 )
 def create_incident_analysis(
     incident_id: int,

@@ -251,7 +251,12 @@ class IncidentAnalysisFeedbackCreate(BaseModel):
 
     rating: FeedbackRating
     comment: str | None = Field(default=None, min_length=1, max_length=2000)
-    actor: str = Field(min_length=1, max_length=200)
+    actor: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Устаревшее поле: автор определяется по access-токену",
+    )
 
 
 class IncidentAnalysisFeedbackResponse(BaseModel):
@@ -278,7 +283,12 @@ class IncidentResolutionCreate(BaseModel):
     confirmed_cause: AnalysisText | None = None
     actions_taken: list[AnalysisText] = Field(min_length=1, max_length=50)
     outcome: AnalysisText
-    actor: str = Field(min_length=1, max_length=200)
+    actor: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Устаревшее поле: автор определяется по access-токену",
+    )
     reason: AnalysisText | None = None
 
 
@@ -300,7 +310,12 @@ class IncidentResolutionUpdate(BaseModel):
         max_length=50,
     )
     outcome: AnalysisText | None = None
-    actor: str = Field(min_length=1, max_length=200)
+    actor: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Устаревшее поле: автор определяется по access-токену",
+    )
     reason: AnalysisText
 
     @model_validator(mode="after")
@@ -322,7 +337,12 @@ class IncidentResolutionRevoke(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    actor: str = Field(min_length=1, max_length=200)
+    actor: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Устаревшее поле: автор определяется по access-токену",
+    )
     reason: AnalysisText
 
 

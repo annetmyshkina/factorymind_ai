@@ -13,6 +13,16 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_db: str = "factorymind"
 
+    auth_jwt_secret: SecretStr = SecretStr(
+        "development-only-factorymind-secret-change-before-production",
+    )
+    auth_jwt_issuer: str = "factorymind-ai"
+    auth_jwt_audience: str = "factorymind-api"
+    auth_access_token_minutes: int = Field(default=30, gt=0, le=1440)
+    auth_bootstrap_enabled: bool = True
+    auth_bootstrap_username: str = "admin"
+    auth_bootstrap_password: SecretStr = SecretStr("admin")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -54,6 +64,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def lease_covers_llm_timeout(self) -> "Settings":
+        if len(self.auth_jwt_secret.get_secret_value()) < 32:
+            raise ValueError("AUTH_JWT_SECRET должен содержать не менее 32 символов")
+        if self.environment not in {"development", "test"}:
+            if self.auth_jwt_secret.get_secret_value().startswith(
+                "development-only-",
+            ):
+                raise ValueError(
+                    "AUTH_JWT_SECRET должен быть заменён вне development/test",
+                )
+            if self.auth_bootstrap_enabled:
+                raise ValueError(
+                    "AUTH_BOOTSTRAP_ENABLED должен быть false вне development/test",
+                )
         if self.experiment_worker_lease_seconds <= self.llm_timeout_seconds:
             raise ValueError(
                 "EXPERIMENT_WORKER_LEASE_SECONDS должен быть больше "

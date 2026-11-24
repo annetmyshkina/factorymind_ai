@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_authenticated
 from app.core.database import get_db
 from app.evaluation.operational import (
     IncidentAnalysisOperationalReport,
@@ -12,7 +13,11 @@ from app.evaluation.operational import (
     build_incident_analysis_operational_report,
 )
 
-router = APIRouter(prefix="/evaluations", tags=["Evaluation"])
+router = APIRouter(
+    prefix="/evaluations",
+    tags=["Evaluation"],
+    dependencies=[Depends(require_authenticated)],
+)
 
 OperationalMetricQuery = Annotated[OperationalMetricFilters, Depends()]
 

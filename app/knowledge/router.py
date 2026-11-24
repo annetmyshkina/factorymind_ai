@@ -16,6 +16,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_authenticated, require_engineer
 from app.core.database import get_db
 from app.knowledge.models import (
     KnowledgeDocument,
@@ -59,7 +60,11 @@ from app.knowledge.service import (
     remove_applicability,
 )
 
-router = APIRouter(prefix="/knowledge", tags=["Knowledge Base"])
+router = APIRouter(
+    prefix="/knowledge",
+    tags=["Knowledge Base"],
+    dependencies=[Depends(require_authenticated)],
+)
 
 
 @router.get(
@@ -96,6 +101,7 @@ def search_knowledge_endpoint(
     "/documents",
     response_model=KnowledgeDocumentResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_engineer)],
 )
 def create_document_endpoint(
     payload: KnowledgeDocumentCreate,
@@ -152,6 +158,7 @@ def get_document_endpoint(
     "/documents/{document_id}/versions",
     response_model=KnowledgeDocumentVersionResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_engineer)],
 )
 def upload_document_version_endpoint(
     document_id: int,
@@ -193,6 +200,7 @@ def upload_document_version_endpoint(
     "/versions/{document_version_id}/applicability",
     response_model=KnowledgeApplicabilityResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_engineer)],
 )
 def add_applicability_endpoint(
     document_version_id: int,
@@ -227,6 +235,7 @@ def add_applicability_endpoint(
 @router.post(
     "/versions/{document_version_id}/process",
     response_model=KnowledgeProcessingResponse,
+    dependencies=[Depends(require_engineer)],
 )
 def process_document_version_endpoint(
     document_version_id: int,
@@ -257,6 +266,7 @@ def process_document_version_endpoint(
 @router.delete(
     "/applicability/{applicability_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_engineer)],
 )
 def remove_applicability_endpoint(
     applicability_id: int,

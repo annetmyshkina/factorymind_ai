@@ -232,10 +232,6 @@ class IncidentAnalysisFeedback(Base):
             "rating IN ('helpful', 'unhelpful', 'incorrect')",
             name="ck_incident_analysis_feedback_rating",
         ),
-        CheckConstraint(
-            "actor_verified = false",
-            name="ck_incident_analysis_feedback_actor_unverified",
-        ),
         Index(
             "ix_incident_analysis_feedback_analysis_created",
             "analysis_id",
@@ -278,10 +274,6 @@ class IncidentResolution(Base):
             "(is_active AND revoked_at IS NULL) "
             "OR (NOT is_active AND revoked_at IS NOT NULL)",
             name="ck_incident_resolutions_active_state",
-        ),
-        CheckConstraint(
-            "actor_verified = false",
-            name="ck_incident_resolutions_actor_unverified",
         ),
         _resolution_search_index,
     )
@@ -354,10 +346,6 @@ class IncidentResolutionEvent(Base):
         CheckConstraint(
             "event_type = 'confirmed' OR before_snapshot IS NOT NULL",
             name="ck_incident_resolution_events_before_snapshot",
-        ),
-        CheckConstraint(
-            "actor_verified = false",
-            name="ck_incident_resolution_events_actor_unverified",
         ),
         Index(
             "ix_incident_resolution_events_resolution_created",

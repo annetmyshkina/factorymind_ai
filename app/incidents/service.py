@@ -45,6 +45,7 @@ def add_incident(
     severity: str = "medium",
     assigned_to: str | None = None,
     source: str = "manual",
+    actor: str | None = None,
 ) -> Incident:
     """Добавляет инцидент и событие 'created' в сессию без commit."""
     incident = Incident(
@@ -61,7 +62,12 @@ def add_incident(
     event = IncidentEvent(
         incident_id=incident.id,
         event_type="created",
-        payload={"severity": severity, "title": title, "source": source},
+        payload={
+            "severity": severity,
+            "title": title,
+            "source": source,
+            "actor": actor or "system",
+        },
     )
     db.add(event)
     db.flush()
@@ -78,6 +84,7 @@ def create_incident(
     description: str | None = None,
     severity: str = "medium",
     assigned_to: str | None = None,
+    actor: str | None = None,
 ) -> Incident:
     """Создаёт инцидент и фиксирует транзакцию."""
     incident = add_incident(
@@ -87,6 +94,7 @@ def create_incident(
         description=description,
         severity=severity,
         assigned_to=assigned_to,
+        actor=actor,
     )
     db.commit()
     observe_incident_created(source="manual", severity=severity)
@@ -172,6 +180,7 @@ def add_deviation_link(
     db: Session,
     incident: Incident,
     deviation_id: int,
+    actor: str | None = None,
 ) -> None:
     """Связывает отклонение с инцидентом без commit (идемпотентно)."""
     existing = db.scalar(
@@ -197,7 +206,10 @@ def add_deviation_link(
         IncidentEvent(
             incident_id=incident.id,
             event_type="deviation_linked",
-            payload={"deviation_id": deviation_id},
+            payload={
+                "deviation_id": deviation_id,
+                "actor": actor or "system",
+            },
         )
     )
 
@@ -206,6 +218,7 @@ def link_deviation(
     db: Session,
     incident: Incident,
     deviation_id: int,
+    actor: str | None = None,
 ) -> None:
     """Привязывает отклонение (идемпотентно) и фиксирует транзакцию."""
     deviation = db.get(EquipmentDeviation, deviation_id)
@@ -217,7 +230,7 @@ def link_deviation(
             f"Отклонение {deviation_id} относится к другому оборудованию",
         )
 
-    add_deviation_link(db, incident, deviation_id)
+    add_deviation_link(db, incident, deviation_id, actor=actor)
     db.commit()
 
     logger.info(

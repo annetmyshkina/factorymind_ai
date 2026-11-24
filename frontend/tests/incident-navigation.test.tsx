@@ -2,12 +2,14 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "../src/App";
-import { loadDashboard, loadIncidentWorkspace, updateIncident } from "../src/api";
+import { loadCurrentUser, loadDashboard, loadIncidentWorkspace, login, updateIncident } from "../src/api";
 import { demoData } from "../src/demo";
-import type { DashboardData, Incident, IncidentWorkspace } from "../src/types";
+import type { CurrentUser, DashboardData, Incident, IncidentWorkspace } from "../src/types";
 
 vi.mock("../src/api", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/api")>(),
+  loadCurrentUser: vi.fn(),
+  login: vi.fn(),
   loadDashboard: vi.fn(),
   loadIncidentWorkspace: vi.fn(),
   updateIncident: vi.fn(),
@@ -15,11 +17,24 @@ vi.mock("../src/api", async (importOriginal) => ({
 
 let data: DashboardData;
 
+const currentUser: CurrentUser = {
+  id: 1,
+  username: "test-admin",
+  full_name: "Test Administrator",
+  role: "admin",
+  is_active: true,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
   localStorage.clear();
+  sessionStorage.clear();
+  sessionStorage.setItem("factorymind-access-token", "test-token");
   vi.clearAllMocks();
   data = structuredClone(demoData);
+  vi.mocked(loadCurrentUser).mockResolvedValue(currentUser);
+  vi.mocked(login).mockResolvedValue(currentUser);
   vi.mocked(loadDashboard).mockImplementation(async () => ({ data: structuredClone(data), mode: "live" }));
   vi.mocked(loadIncidentWorkspace).mockImplementation(async (id): Promise<IncidentWorkspace> => ({
     detail: { ...data.incidents.find((item) => item.id === id)!, deviation_ids: [], events: [] },
@@ -91,5 +106,26 @@ describe("Навигация при сохранении инцидента", ()
     render(<App />);
     await screen.findByRole("combobox", { name: "Критичность" });
     expectIncidentList();
+  });
+});
+
+describe("Аутентификация оператора", () => {
+  it("показывает вход без сохранённой сессии", async () => {
+    sessionStorage.clear();
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Вход в систему" })).toBeTruthy();
+    expect(loadDashboard).not.toHaveBeenCalled();
+  });
+
+  it("после успешного входа загружает рабочий экран", async () => {
+    sessionStorage.clear();
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Войти" }));
+
+    await screen.findByText("Данные в реальном времени");
+    expect(login).toHaveBeenCalledWith("admin", "admin");
+    expect(loadDashboard).toHaveBeenCalled();
   });
 });

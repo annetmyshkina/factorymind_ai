@@ -1,7 +1,9 @@
 import { demoData } from "./demo";
-import type { AnalysisFeedback, DashboardData, DataMode, Deviation, Equipment, FeedbackRating, Incident, IncidentAnalysis, IncidentDetail, IncidentResolution, IncidentStatus, IncidentWorkspace, KnowledgeDocument, OperationalReport, Telemetry } from "./types";
+import type { AnalysisFeedback, CurrentUser, DashboardData, DataMode, Deviation, Equipment, FeedbackRating, Incident, IncidentAnalysis, IncidentDetail, IncidentResolution, IncidentStatus, IncidentWorkspace, KnowledgeDocument, OperationalReport, Telemetry } from "./types";
 
 const STORAGE_KEY = "factorymind-api-base";
+const TOKEN_KEY = "factorymind-access-token";
+export const AUTH_EXPIRED_EVENT = "factorymind-auth-expired";
 
 export function getApiBase(): string {
   return localStorage.getItem(STORAGE_KEY)?.replace(/\/$/, "") ?? "";
@@ -11,6 +13,18 @@ export function saveApiBase(value: string): void {
   const normalized = value.trim().replace(/\/$/, "");
   if (normalized) localStorage.setItem(STORAGE_KEY, normalized);
   else localStorage.removeItem(STORAGE_KEY);
+}
+
+export function getAccessToken(): string | null {
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+
+function saveAccessToken(token: string): void {
+  sessionStorage.setItem(TOKEN_KEY, token);
+}
+
+export function logout(): void {
+  sessionStorage.removeItem(TOKEN_KEY);
 }
 
 export class ApiError extends Error {
@@ -25,11 +39,19 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  const token = getAccessToken();
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
   const response = await fetch(`${getApiBase()}${path}`, {
     ...init,
     headers,
   });
   if (!response.ok) {
+    if (response.status === 401 && path !== "/auth/token") {
+      logout();
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    }
     let message = `${response.status} ${response.statusText}`;
     try {
       const body = await response.json() as { detail?: unknown };
@@ -42,6 +64,21 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+export async function login(username: string, password: string): Promise<CurrentUser> {
+  const form = new URLSearchParams({ username, password });
+  const response = await apiRequest<{ access_token: string }>("/auth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form,
+  });
+  saveAccessToken(response.access_token);
+  return loadCurrentUser();
+}
+
+export function loadCurrentUser(signal?: AbortSignal): Promise<CurrentUser> {
+  return apiRequest<CurrentUser>("/auth/me", { signal });
 }
 
 function get<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -126,7 +163,7 @@ export function loadAnalysisFeedback(incidentId: number, analysisId: number): Pr
 export function addAnalysisFeedback(
   incidentId: number,
   analysisId: number,
-  payload: { rating: FeedbackRating; comment: string | null; actor: string },
+  payload: { rating: FeedbackRating; comment: string | null },
 ): Promise<AnalysisFeedback> {
   return apiRequest(`/incidents/${incidentId}/analyses/${analysisId}/feedback`, {
     method: "POST",
@@ -136,7 +173,7 @@ export function addAnalysisFeedback(
 
 export function confirmIncidentResolution(
   incidentId: number,
-  payload: { analysis_id: number | null; checks_performed: string[]; confirmed_cause: string | null; actions_taken: string[]; outcome: string; actor: string; reason?: string },
+  payload: { analysis_id: number | null; checks_performed: string[]; confirmed_cause: string | null; actions_taken: string[]; outcome: string; reason?: string },
 ): Promise<IncidentResolution> {
   return apiRequest(`/incidents/${incidentId}/resolution`, {
     method: "POST",

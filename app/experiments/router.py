@@ -9,6 +9,7 @@ from app.ai.schemas import (
     ExperimentDetailResponse,
     ExperimentReportResponse,
 )
+from app.auth.dependencies import require_admin, require_authenticated
 from app.core.database import get_db
 from app.experiments.service import (
     ExperimentConflictError,
@@ -18,13 +19,18 @@ from app.experiments.service import (
     get_experiment_report,
 )
 
-router = APIRouter(prefix="/experiments", tags=["Experiments"])
+router = APIRouter(
+    prefix="/experiments",
+    tags=["Experiments"],
+    dependencies=[Depends(require_authenticated)],
+)
 
 
 @router.post(
     "",
     response_model=ExperimentDetailResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_experiment_endpoint(
     payload: ExperimentCreate,

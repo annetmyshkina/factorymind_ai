@@ -78,7 +78,8 @@ def test_feedback_is_immutable_opinion_not_confirmed_resolution(
     )
 
     assert first.status_code == second.status_code == 201
-    assert first.json()["actor_verified"] is False
+    assert first.json()["actor"] == "test-admin"
+    assert first.json()["actor_verified"] is True
     feedback = client.get(path)
     assert feedback.status_code == 200
     assert [item["rating"] for item in feedback.json()] == [
@@ -110,7 +111,8 @@ def test_confirm_correct_revoke_and_reconfirm_resolution(
     assert data["is_active"] is True
     assert data["revision"] == 1
     assert data["analysis_id"] == analysis["id"]
-    assert data["actor_verified"] is False
+    assert data["actor"] == "test-admin"
+    assert data["actor_verified"] is True
     assert client.post(path, json=payload).status_code == 409
 
     corrected = client.patch(
@@ -192,7 +194,8 @@ def test_confirm_correct_revoke_and_reconfirm_resolution(
         "revoked",
         "confirmed",
     ]
-    assert all(item["actor_verified"] is False for item in event_data)
+    assert all(item["actor"] == "test-admin" for item in event_data)
+    assert all(item["actor_verified"] is True for item in event_data)
     assert event_data[0]["before_snapshot"] is None
     assert event_data[1]["before_snapshot"]["revision"] == 1
     assert event_data[1]["after_snapshot"]["revision"] == 2
@@ -223,7 +226,8 @@ def test_reopening_incident_automatically_revokes_resolution(
     assert resolution["revision"] == 2
     events = client.get(f"{path}/events").json()
     assert [item["event_type"] for item in events] == ["confirmed", "revoked"]
-    assert events[-1]["actor"] == "system"
+    assert events[-1]["actor"] == "test-admin"
+    assert events[-1]["actor_verified"] is True
     assert events[-1]["reason"] == "Инцидент возвращён в активный статус"
 
 

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_admin, require_authenticated
 from app.core.database import get_db
 from app.equipment.models import Equipment
 from app.monitoring.models import EquipmentDeviation, MonitoringRule
@@ -15,6 +16,7 @@ from app.monitoring.schemas import (
 router = APIRouter(
     prefix="/equipment",
     tags=["Monitoring"],
+    dependencies=[Depends(require_authenticated)],
 )
 
 logger = structlog.get_logger(__name__)
@@ -24,6 +26,7 @@ logger = structlog.get_logger(__name__)
     "/{equipment_id}/monitoring-rules",
     response_model=MonitoringRuleResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_monitoring_rule(
     equipment_id: int,

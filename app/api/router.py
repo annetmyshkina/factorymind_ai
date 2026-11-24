@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.ai.router import router as ai_router
 from app.api.health import router as health_router
+from app.auth.router import router as auth_router
 from app.equipment.router import router as equipment_router
 from app.evaluation.router import router as evaluation_router
 from app.experiments.router import router as experiments_router
@@ -16,6 +17,7 @@ api_router = APIRouter()
 
 api_router.include_router(health_router)
 api_router.include_router(observability_router)
+api_router.include_router(auth_router)
 api_router.include_router(equipment_router)
 api_router.include_router(telemetry_router)
 api_router.include_router(monitoring_router)

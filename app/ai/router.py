@@ -19,10 +19,19 @@ from app.ai.schemas import (
     PromptVersionResponse,
 )
 from app.ai.service import execute_call
+from app.auth.dependencies import (
+    require_admin,
+    require_authenticated,
+    require_engineer,
+)
 from app.core.config import settings
 from app.core.database import get_db
 
-router = APIRouter(prefix="/ai", tags=["AI"])
+router = APIRouter(
+    prefix="/ai",
+    tags=["AI"],
+    dependencies=[Depends(require_authenticated)],
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -31,6 +40,7 @@ logger = structlog.get_logger(__name__)
     "/calls",
     response_model=LLMCallResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_engineer)],
 )
 def create_call(
     payload: LLMCallCreate,
@@ -129,6 +139,7 @@ def get_call(
     "/prompts",
     response_model=PromptVersionResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_prompt_version(
     payload: PromptVersionCreate,

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
+from app.auth.models import User
 from app.equipment.models import Equipment
 from app.incidents.models import Incident
 from app.incidents.router import update_incident
@@ -253,6 +254,7 @@ def test_invalid_transitions(
 
 def test_invalid_transition_rolls_back_other_patch_fields(
     db_session: Session,
+    admin_user: User,
 ) -> None:
     equipment = Equipment(
         code="ATOMIC-PATCH",
@@ -282,7 +284,12 @@ def test_invalid_transition_rolls_back_other_patch_fields(
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        update_incident(incident.id, payload, db_session)
+        update_incident(
+            incident.id,
+            payload,
+            current_user=admin_user,
+            db=db_session,
+        )
 
     assert exc_info.value.status_code == 409
 
@@ -347,16 +354,17 @@ def test_events_logged(
         "severity": "high",
         "title": "Test incident",
         "source": "manual",
+        "actor": "test-admin",
     }
     assert events[1]["payload"] == {
         "from": "open",
         "to": "in_progress",
-        "actor": "system",
+        "actor": "test-admin",
     }
     assert events[2]["payload"] == {
         "from": "in_progress",
         "to": "resolved",
-        "actor": "system",
+        "actor": "test-admin",
     }
 
 
@@ -420,8 +428,8 @@ def test_assign_and_unassign_logs_events(
     events = client.get(f"{url}/events").json()
     assigned = [e for e in events if e["event_type"] == "assigned"]
     assert [e["payload"] for e in assigned] == [
-        {"from": None, "to": "ivan", "actor": "system"},
-        {"from": "ivan", "to": None, "actor": "system"},
+        {"from": None, "to": "ivan", "actor": "test-admin"},
+        {"from": "ivan", "to": None, "actor": "test-admin"},
     ]
 
 
@@ -495,7 +503,10 @@ def test_link_deviation_and_idempotency(
     events = client.get(f"/incidents/{incident['id']}/events").json()
     linked = [e for e in events if e["event_type"] == "deviation_linked"]
     assert len(linked) == 1
-    assert linked[0]["payload"] == {"deviation_id": deviation_id}
+    assert linked[0]["payload"] == {
+        "deviation_id": deviation_id,
+        "actor": "test-admin",
+    }
 
 
 def test_link_deviation_conflict_when_linked_to_other(
@@ -592,7 +603,10 @@ def test_list_incidents_no_n_plus_1(
 
     assert response.status_code == 200
     assert len(response.json()) == 3
-    assert len(queries) == 1, f"Possible N+1: {len(queries)} queries"
+    domain_queries = [query for query in queries if "FROM users" not in query]
+    assert len(domain_queries) == 1, (
+        f"Possible N+1: {len(domain_queries)} domain queries"
+    )
 
 
 def test_get_incident_no_n_plus_1(
@@ -625,6 +639,6 @@ def test_get_incident_no_n_plus_1(
     assert response.status_code == 200
     assert len(response.json()["deviation_ids"]) == 2
     assert len(response.json()["events"]) == 6
-    # 3 запроса сейчас (incident+equipment, deviations, events);
+    # 4 запроса сейчас (auth, incident+equipment, deviations, events);
     # при N+1 их было бы больше с ростом числа связанных строк.
     assert len(queries) <= 4, f"Possible N+1: {len(queries)} queries"

@@ -253,7 +253,7 @@ def test_operational_metrics_keep_denominators_separate(
         "revoked_event_count": 1,
     }
     assert len(data["interpretation_warnings"]) == 3
-    assert "не проверен" in data["interpretation_warnings"][1]
+    assert "actor_verified=false" in data["interpretation_warnings"][1]
 
 
 def test_operational_metrics_filter_analysis_cohort(

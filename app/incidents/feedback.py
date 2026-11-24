@@ -37,6 +37,13 @@ class IncidentResolutionConflictError(ValueError):
     """Операция противоречит текущему состоянию результата или инцидента."""
 
 
+def _effective_actor(authenticated_actor: str | None, legacy_actor: str | None) -> str:
+    actor = authenticated_actor or legacy_actor
+    if actor is None:
+        raise ValueError("Автор операции не определён")
+    return actor
+
+
 def _get_incident(
     db: Session,
     incident_id: int,
@@ -76,6 +83,8 @@ def add_analysis_feedback(
     incident_id: int,
     analysis_id: int,
     payload: IncidentAnalysisFeedbackCreate,
+    actor: str | None = None,
+    actor_verified: bool = False,
 ) -> IncidentAnalysisFeedback:
     """Добавляет неизменяемую оценку, не превращая её в подтверждённый факт."""
     _get_incident(db, incident_id)
@@ -84,8 +93,8 @@ def add_analysis_feedback(
         analysis_id=analysis_id,
         rating=payload.rating,
         comment=payload.comment,
-        actor=payload.actor,
-        actor_verified=False,
+        actor=_effective_actor(actor, payload.actor),
+        actor_verified=actor_verified,
     )
     db.add(feedback)
     db.commit()
@@ -156,6 +165,7 @@ def _add_resolution_event(
     *,
     event_type: str,
     actor: str,
+    actor_verified: bool,
     reason: str | None,
     before_snapshot: dict[str, object] | None,
 ) -> None:
@@ -164,7 +174,7 @@ def _add_resolution_event(
             resolution_id=resolution.id,
             event_type=event_type,
             actor=actor,
-            actor_verified=False,
+            actor_verified=actor_verified,
             reason=reason,
             before_snapshot=before_snapshot,
             after_snapshot=_resolution_snapshot(resolution),
@@ -188,6 +198,8 @@ def confirm_incident_resolution(
     *,
     incident_id: int,
     payload: IncidentResolutionCreate,
+    actor: str | None = None,
+    actor_verified: bool = False,
 ) -> IncidentResolution:
     """Подтверждает результат либо повторно активирует отозванный результат."""
     incident = _get_incident(db, incident_id, for_update=True)
@@ -233,8 +245,9 @@ def confirm_incident_resolution(
     resolution.confirmed_cause = payload.confirmed_cause
     resolution.actions_taken = list(payload.actions_taken)
     resolution.outcome = payload.outcome
-    resolution.actor = payload.actor
-    resolution.actor_verified = False
+    effective_actor = _effective_actor(actor, payload.actor)
+    resolution.actor = effective_actor
+    resolution.actor_verified = actor_verified
     resolution.is_active = True
     resolution.revoked_at = None
     _refresh_resolution_search_text(resolution)
@@ -243,7 +256,8 @@ def confirm_incident_resolution(
         db,
         resolution,
         event_type="confirmed",
-        actor=payload.actor,
+        actor=effective_actor,
+        actor_verified=actor_verified,
         reason=payload.reason,
         before_snapshot=before_snapshot,
     )
@@ -279,6 +293,8 @@ def correct_incident_resolution(
     *,
     incident_id: int,
     payload: IncidentResolutionUpdate,
+    actor: str | None = None,
+    actor_verified: bool = False,
 ) -> IncidentResolution:
     """Исправляет активный результат и атомарно сохраняет снимки аудита."""
     _get_incident(db, incident_id)
@@ -325,8 +341,9 @@ def correct_incident_resolution(
         raise IncidentResolutionConflictError("Изменения результата отсутствуют")
 
     resolution.revision += 1
-    resolution.actor = payload.actor
-    resolution.actor_verified = False
+    effective_actor = _effective_actor(actor, payload.actor)
+    resolution.actor = effective_actor
+    resolution.actor_verified = actor_verified
     resolution.updated_at = datetime.now(UTC)
     _refresh_resolution_search_text(resolution)
     db.flush()
@@ -334,7 +351,8 @@ def correct_incident_resolution(
         db,
         resolution,
         event_type="corrected",
-        actor=payload.actor,
+        actor=effective_actor,
+        actor_verified=actor_verified,
         reason=payload.reason,
         before_snapshot=before_snapshot,
     )
@@ -349,6 +367,7 @@ def revoke_incident_resolution(
     incident_id: int,
     actor: str,
     reason: str,
+    actor_verified: bool = False,
 ) -> IncidentResolution:
     """Отзывает активный результат, сохраняя его данные и полный аудит."""
     _get_incident(db, incident_id)
@@ -372,6 +391,7 @@ def revoke_incident_resolution(
         resolution,
         event_type="revoked",
         actor=actor,
+        actor_verified=actor_verified,
         reason=reason,
         before_snapshot=before_snapshot,
     )
@@ -385,6 +405,7 @@ def revoke_resolution_on_incident_reopen(
     *,
     incident_id: int,
     actor: str = "system",
+    actor_verified: bool = False,
 ) -> None:
     """Не оставляет подтверждённое решение активным после возврата в работу."""
     resolution = _get_resolution_for_update(db, incident_id)
@@ -402,6 +423,7 @@ def revoke_resolution_on_incident_reopen(
         resolution,
         event_type="revoked",
         actor=actor,
+        actor_verified=actor_verified,
         reason="Инцидент возвращён в активный статус",
         before_snapshot=before_snapshot,
     )

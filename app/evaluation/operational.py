@@ -24,7 +24,8 @@ from app.incidents.models import (
 OPERATIONAL_METRICS_VERSION = "incident-operational-v1"
 INTERPRETATION_WARNINGS = [
     "Feedback является субъективной оценкой, а не доказательством корректности.",
-    "Actor не проверен: это пользовательская метка до внедрения аутентификации.",
+    "Автор новых записей подтверждён JWT; legacy-записи могут иметь "
+    "actor_verified=false.",
     "Связь с подтверждённым решением является эксплуатационным сигналом, "
     "а не общей оценкой модели.",
 ]

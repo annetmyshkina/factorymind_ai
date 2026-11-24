@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_admin, require_authenticated
 from app.core.database import get_db
 from app.equipment.models import Equipment
 from app.equipment.schemas import (
@@ -14,6 +15,7 @@ from app.equipment.schemas import (
 router = APIRouter(
     prefix="/equipment",
     tags=["Equipment"],
+    dependencies=[Depends(require_authenticated)],
 )
 
 
@@ -21,6 +23,7 @@ router = APIRouter(
     "",
     response_model=EquipmentResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_equipment(
     equipment_data: EquipmentCreate,
@@ -76,6 +79,7 @@ def get_equipment(
 @router.patch(
     "/{equipment_id}",
     response_model=EquipmentResponse,
+    dependencies=[Depends(require_admin)],
 )
 def update_equipment(
     equipment_id: int,

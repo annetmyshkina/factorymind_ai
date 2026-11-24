@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.ai import models as ai_models  # noqa: F401
+from app.auth import models as auth_models  # noqa: F401
+from app.auth.models import User, UserRole
+from app.auth.security import create_access_token, hash_password
 from app.core.database import Base, get_db
 from app.equipment import models as equipment_models  # noqa: F401
 from app.knowledge import models as knowledge_models  # noqa: F401
@@ -45,7 +48,40 @@ def db_session():
 
 
 @pytest.fixture
-def client(db_session: Session):
+def admin_user(db_session: Session) -> User:
+    user = User(
+        username="test-admin",
+        full_name="Test administrator",
+        password_hash=hash_password("test-password"),
+        role=UserRole.ADMIN,
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def client(db_session: Session, admin_user: User):
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        token, _ = create_access_token(admin_user.id)
+        with TestClient(
+            app,
+            headers={"Authorization": f"Bearer {token}"},
+        ) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture
+def unauthenticated_client(db_session: Session):
     def override_get_db():
         yield db_session
 

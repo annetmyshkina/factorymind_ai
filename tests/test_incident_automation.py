@@ -93,7 +93,10 @@ def test_deviation_creates_incident(
         "created",
         "deviation_linked",
     ]
-    assert detail["events"][1]["payload"] == {"deviation_id": deviation.id}
+    assert detail["events"][1]["payload"] == {
+        "deviation_id": deviation.id,
+        "actor": "system",
+    }
 
 
 @pytest.mark.parametrize(

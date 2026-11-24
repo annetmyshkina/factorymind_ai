@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, require_authenticated, require_engineer
 from app.core.database import get_db
 from app.incidents.feedback import (
     FeedbackAnalysisNotFoundError,
@@ -34,7 +35,11 @@ from app.incidents.schemas import (
     IncidentResolutionUpdate,
 )
 
-router = APIRouter(prefix="/incidents", tags=["Engineer Feedback"])
+router = APIRouter(
+    prefix="/incidents",
+    tags=["Engineer Feedback"],
+    dependencies=[Depends(require_authenticated)],
+)
 
 
 def _raise_feedback_error(exc: Exception) -> None:
@@ -52,11 +57,13 @@ def _raise_feedback_error(exc: Exception) -> None:
     "/{incident_id}/analyses/{analysis_id}/feedback",
     response_model=IncidentAnalysisFeedbackResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_engineer)],
 )
 def create_analysis_feedback(
     incident_id: int,
     analysis_id: int,
     payload: IncidentAnalysisFeedbackCreate,
+    current_user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> IncidentAnalysisFeedback:
     """Добавляет оценку анализа без подтверждения его гипотез."""
@@ -66,6 +73,8 @@ def create_analysis_feedback(
             incident_id=incident_id,
             analysis_id=analysis_id,
             payload=payload,
+            actor=current_user.username,
+            actor_verified=True,
         )
     except (FeedbackIncidentNotFoundError, FeedbackAnalysisNotFoundError) as exc:
         _raise_feedback_error(exc)
@@ -99,10 +108,12 @@ def get_analysis_feedback(
     "/{incident_id}/resolution",
     response_model=IncidentResolutionResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_engineer)],
 )
 def create_incident_resolution(
     incident_id: int,
     payload: IncidentResolutionCreate,
+    current_user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> IncidentResolution:
     """Подтверждает результат завершённой диагностики."""
@@ -111,6 +122,8 @@ def create_incident_resolution(
             db,
             incident_id=incident_id,
             payload=payload,
+            actor=current_user.username,
+            actor_verified=True,
         )
     except FeedbackIncidentNotFoundError as exc:
         raise HTTPException(
@@ -155,10 +168,12 @@ def read_incident_resolution(
 @router.patch(
     "/{incident_id}/resolution",
     response_model=IncidentResolutionResponse,
+    dependencies=[Depends(require_engineer)],
 )
 def update_incident_resolution(
     incident_id: int,
     payload: IncidentResolutionUpdate,
+    current_user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> IncidentResolution:
     """Исправляет активный результат с обязательной записью аудита."""
@@ -167,6 +182,8 @@ def update_incident_resolution(
             db,
             incident_id=incident_id,
             payload=payload,
+            actor=current_user.username,
+            actor_verified=True,
         )
     except FeedbackIncidentNotFoundError as exc:
         raise HTTPException(
@@ -193,10 +210,12 @@ def update_incident_resolution(
 @router.post(
     "/{incident_id}/resolution/revoke",
     response_model=IncidentResolutionResponse,
+    dependencies=[Depends(require_engineer)],
 )
 def revoke_resolution(
     incident_id: int,
     payload: IncidentResolutionRevoke,
+    current_user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> IncidentResolution:
     """Отзывает подтверждение, не удаляя результат и историю."""
@@ -204,8 +223,9 @@ def revoke_resolution(
         return revoke_incident_resolution(
             db,
             incident_id=incident_id,
-            actor=payload.actor,
+            actor=current_user.username,
             reason=payload.reason,
+            actor_verified=True,
         )
     except FeedbackIncidentNotFoundError as exc:
         raise HTTPException(

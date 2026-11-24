@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { addAnalysisFeedback, ApiError, confirmIncidentResolution, createIncidentAnalysis, loadAnalysisFeedback, loadIncidentWorkspace, updateIncident } from "./api";
 import { severityLabels, statusLabels } from "./demo";
-import type { AnalysisCitedItem, AnalysisFeedback, DataMode, FeedbackRating, Incident, IncidentAnalysis, IncidentDetail, IncidentSeverity, IncidentStatus, IncidentWorkspace } from "./types";
+import type { AnalysisCitedItem, AnalysisFeedback, DataMode, FeedbackRating, Incident, IncidentAnalysis, IncidentDetail, IncidentSeverity, IncidentStatus, IncidentWorkspace, UserRole } from "./types";
 
 type DrawerTab = "summary" | "analysis" | "history";
 
@@ -76,11 +76,12 @@ function AnalysisResult({ analysis }: { analysis: IncidentAnalysis }) {
 interface IncidentDrawerProps {
   incident: Incident;
   mode: DataMode;
+  role: UserRole;
   onClose: () => void;
   onChanged: () => Promise<void>;
 }
 
-export default function IncidentDrawer({ incident, mode, onClose, onChanged }: IncidentDrawerProps) {
+export default function IncidentDrawer({ incident, mode, role, onClose, onChanged }: IncidentDrawerProps) {
   const [tab, setTab] = useState<DrawerTab>("summary");
   const [workspace, setWorkspace] = useState<IncidentWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,7 +94,6 @@ export default function IncidentDrawer({ incident, mode, onClose, onChanged }: I
   const [provider, setProvider] = useState<"ollama" | "compatible">("ollama");
   const [model, setModel] = useState("");
   const [query, setQuery] = useState(`Определи возможные причины инцидента «${incident.title}» и предложи безопасную последовательность проверок.`);
-  const [actor, setActor] = useState("Дежурный инженер");
   const [feedbackComment, setFeedbackComment] = useState("");
   const [feedback, setFeedback] = useState<AnalysisFeedback[]>([]);
   const [checksPerformed, setChecksPerformed] = useState("");
@@ -145,8 +145,9 @@ export default function IncidentDrawer({ incident, mode, onClose, onChanged }: I
 
   const detail: IncidentDetail = workspace?.detail ?? { ...incident, deviation_ids: [], events: [] };
   const latestAnalysis = workspace?.analyses[0];
-  const canMutate = mode === "live";
-  const canResolve = detail.status === "resolved" || detail.status === "closed";
+  const canMutate = mode === "live" && role !== "viewer";
+  const canEngineer = mode === "live" && (role === "engineer" || role === "admin");
+  const canResolve = canEngineer && (detail.status === "resolved" || detail.status === "closed");
   const transitionOptions = transitions[detail.status];
   const feedbackSummary = useMemo(() => ({
     helpful: feedback.filter((item) => item.rating === "helpful").length,
@@ -176,7 +177,6 @@ export default function IncidentDrawer({ incident, mode, onClose, onChanged }: I
       () => addAnalysisFeedback(incident.id, latestAnalysis.id, {
         rating,
         comment: feedbackComment.trim() || null,
-        actor: actor.trim(),
       }),
       "Оценка сохранена в журнале.",
     );
@@ -193,7 +193,7 @@ export default function IncidentDrawer({ incident, mode, onClose, onChanged }: I
         <button className={tab === "analysis" ? "active" : ""} onClick={() => setTab("analysis")}>AI-диагностика{workspace?.analyses.length ? <b>{workspace.analyses.length}</b> : null}</button>
         <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>История{detail.events?.length ? <b>{detail.events.length}</b> : null}</button>
       </nav>
-      {!canMutate && <div className="drawer-demo-note">Действия отключены: карточка открыта на демонстрационных данных без backend.</div>}
+      {!canMutate && <div className="drawer-demo-note">Действия отключены: {mode === "demo" ? "карточка открыта на демонстрационных данных без backend" : "для роли наблюдателя доступно только чтение"}.</div>}
       {error && <div className="drawer-message drawer-error">{error}</div>}
       {notice && <div className="drawer-message drawer-success">{notice}</div>}
       <div className="drawer-body">
@@ -208,19 +208,19 @@ export default function IncidentDrawer({ incident, mode, onClose, onChanged }: I
             <section className="drawer-card"><div className="drawer-card-head"><div><p className="drawer-label">Сигналы</p><h3>Связанные отклонения</h3></div><strong>{workspace.deviations.length}</strong></div>
               <div className="deviation-list">{workspace.deviations.map((item) => <article key={item.id}><div><span>{item.metric_name}</span><time>{formatDateTime(item.detected_at)}</time></div><strong>{item.observed_value} <small>порог {item.threshold_value}</small></strong><p>{item.message}</p></article>)}{!workspace.deviations.length && <p className="drawer-empty">Связанных отклонений нет.</p>}</div>
             </section>
-            {workspace.resolution && <section className={`drawer-card resolution-card ${workspace.resolution.is_active ? "resolution-active" : "resolution-revoked"}`}><div className="drawer-card-head"><div><p className="drawer-label">Подтверждённый результат</p><h3>Ревизия {workspace.resolution.revision}</h3></div><span>{workspace.resolution.is_active ? "Активен" : "Отозван"}</span></div><p><strong>Причина:</strong> {workspace.resolution.confirmed_cause ?? "Не установлена"}</p><p><strong>Результат:</strong> {workspace.resolution.outcome}</p><small>{workspace.resolution.actor} · личность не подтверждена</small></section>}
+            {workspace.resolution && <section className={`drawer-card resolution-card ${workspace.resolution.is_active ? "resolution-active" : "resolution-revoked"}`}><div className="drawer-card-head"><div><p className="drawer-label">Подтверждённый результат</p><h3>Ревизия {workspace.resolution.revision}</h3></div><span>{workspace.resolution.is_active ? "Активен" : "Отозван"}</span></div><p><strong>Причина:</strong> {workspace.resolution.confirmed_cause ?? "Не установлена"}</p><p><strong>Результат:</strong> {workspace.resolution.outcome}</p><small>{workspace.resolution.actor} · {workspace.resolution.actor_verified ? "подтверждённая учётная запись" : "непроверенная legacy-метка"}</small></section>}
           </div>}
 
           {tab === "analysis" && <div className="drawer-section-stack">
             <section className="drawer-card analysis-form"><div className="drawer-card-head"><div><p className="drawer-label">RAG-диагностика</p><h3>Новый анализ</h3></div><span className="unverified-note">Решение принимает инженер</span></div>
-              <label>Вопрос<textarea value={query} onChange={(event) => setQuery(event.target.value)} maxLength={500} rows={3} disabled={!canMutate || busy} /></label>
-              <div className="analysis-config"><label>Провайдер<select value={provider} onChange={(event) => setProvider(event.target.value as "ollama" | "compatible")} disabled={!canMutate || busy}><option value="ollama">Ollama</option><option value="compatible">Compatible API</option></select></label><label>Модель<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="По умолчанию" disabled={!canMutate || busy} /></label><button className="primary-button" disabled={!canMutate || busy || query.trim().length < 2} onClick={() => void execute(() => createIncidentAnalysis(incident.id, { query: query.trim(), provider, model: model.trim() || null, max_sources: 5, max_experiences: 3 }), "Анализ сохранён.")}>{busy ? "Выполняется…" : "Запустить анализ"}</button></div>
+              <label>Вопрос<textarea value={query} onChange={(event) => setQuery(event.target.value)} maxLength={500} rows={3} disabled={!canEngineer || busy} /></label>
+              <div className="analysis-config"><label>Провайдер<select value={provider} onChange={(event) => setProvider(event.target.value as "ollama" | "compatible")} disabled={!canEngineer || busy}><option value="ollama">Ollama</option><option value="compatible">Compatible API</option></select></label><label>Модель<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="По умолчанию" disabled={!canEngineer || busy} /></label><button className="primary-button" disabled={!canEngineer || busy || query.trim().length < 2} onClick={() => void execute(() => createIncidentAnalysis(incident.id, { query: query.trim(), provider, model: model.trim() || null, max_sources: 5, max_experiences: 3 }), "Анализ сохранён.")}>{busy ? "Выполняется…" : "Запустить анализ"}</button></div>
             </section>
             {latestAnalysis ? <>
               <AnalysisResult analysis={latestAnalysis} />
-              <section className="drawer-card feedback-card"><div className="drawer-card-head"><div><p className="drawer-label">Обратная связь</p><h3>Оценить анализ</h3></div><span>{feedback.length} оценок</span></div><div className="feedback-counts"><span>Полезно {feedbackSummary.helpful}</span><span>Не помогло {feedbackSummary.unhelpful}</span><span>Некорректно {feedbackSummary.incorrect}</span></div><div className="feedback-fields"><label>Автор<input value={actor} onChange={(event) => setActor(event.target.value)} maxLength={200} disabled={!canMutate || busy} /></label><label>Комментарий<input value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value)} maxLength={2000} placeholder="Необязательно" disabled={!canMutate || busy} /></label></div><div className="feedback-actions"><button disabled={!canMutate || busy || !actor.trim()} onClick={() => submitFeedback("helpful")}>Полезно</button><button disabled={!canMutate || busy || !actor.trim()} onClick={() => submitFeedback("unhelpful")}>Не помогло</button><button className="danger-outline" disabled={!canMutate || busy || !actor.trim()} onClick={() => submitFeedback("incorrect")}>Некорректно</button></div><small>Автор сохраняется как непроверенная пользовательская метка.</small></section>
+              <section className="drawer-card feedback-card"><div className="drawer-card-head"><div><p className="drawer-label">Обратная связь</p><h3>Оценить анализ</h3></div><span>{feedback.length} оценок</span></div><div className="feedback-counts"><span>Полезно {feedbackSummary.helpful}</span><span>Не помогло {feedbackSummary.unhelpful}</span><span>Некорректно {feedbackSummary.incorrect}</span></div><div className="feedback-fields"><label>Комментарий<input value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value)} maxLength={2000} placeholder="Необязательно" disabled={!canEngineer || busy} /></label></div><div className="feedback-actions"><button disabled={!canEngineer || busy} onClick={() => submitFeedback("helpful")}>Полезно</button><button disabled={!canEngineer || busy} onClick={() => submitFeedback("unhelpful")}>Не помогло</button><button className="danger-outline" disabled={!canEngineer || busy} onClick={() => submitFeedback("incorrect")}>Некорректно</button></div><small>Автор определяется по текущей учётной записи.</small></section>
             </> : <div className="drawer-empty-state"><strong>Анализов пока нет</strong><span>Запустите диагностику после загрузки применимой технической документации.</span></div>}
-            {canResolve && !workspace.resolution && <section className="drawer-card resolution-form"><div className="drawer-card-head"><div><p className="drawer-label">Инженерное подтверждение</p><h3>Зафиксировать фактический результат</h3></div></div><label>Выполненные проверки, по одной на строку<textarea value={checksPerformed} onChange={(event) => setChecksPerformed(event.target.value)} rows={3} /></label><label>Подтверждённая причина<input value={confirmedCause} onChange={(event) => setConfirmedCause(event.target.value)} /></label><label>Выполненные действия, по одному на строку<textarea value={actionsTaken} onChange={(event) => setActionsTaken(event.target.value)} rows={3} /></label><label>Результат<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} rows={2} /></label><button className="primary-button" disabled={busy || !actor.trim() || !lines(checksPerformed).length || !lines(actionsTaken).length || !outcome.trim()} onClick={() => void execute(() => confirmIncidentResolution(incident.id, { analysis_id: latestAnalysis?.id ?? null, checks_performed: lines(checksPerformed), confirmed_cause: confirmedCause.trim() || null, actions_taken: lines(actionsTaken), outcome: outcome.trim(), actor: actor.trim() }), "Фактический результат подтверждён.")}>Подтвердить результат</button><small>Подтверждение разрешено только для решённого или закрытого инцидента.</small></section>}
+            {canResolve && !workspace.resolution && <section className="drawer-card resolution-form"><div className="drawer-card-head"><div><p className="drawer-label">Инженерное подтверждение</p><h3>Зафиксировать фактический результат</h3></div></div><label>Выполненные проверки, по одной на строку<textarea value={checksPerformed} onChange={(event) => setChecksPerformed(event.target.value)} rows={3} /></label><label>Подтверждённая причина<input value={confirmedCause} onChange={(event) => setConfirmedCause(event.target.value)} /></label><label>Выполненные действия, по одному на строку<textarea value={actionsTaken} onChange={(event) => setActionsTaken(event.target.value)} rows={3} /></label><label>Результат<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} rows={2} /></label><button className="primary-button" disabled={busy || !lines(checksPerformed).length || !lines(actionsTaken).length || !outcome.trim()} onClick={() => void execute(() => confirmIncidentResolution(incident.id, { analysis_id: latestAnalysis?.id ?? null, checks_performed: lines(checksPerformed), confirmed_cause: confirmedCause.trim() || null, actions_taken: lines(actionsTaken), outcome: outcome.trim() }), "Фактический результат подтверждён.")}>Подтвердить результат</button><small>Подтверждение разрешено только для решённого или закрытого инцидента.</small></section>}
           </div>}
 
           {tab === "history" && <section className="drawer-card event-history"><div className="drawer-card-head"><div><p className="drawer-label">Неизменяемый аудит</p><h3>История инцидента</h3></div><strong>{detail.events.length}</strong></div><div>{detail.events.map((event) => <article key={event.id}><span className="event-line" /><div><strong>{eventLabels[event.event_type] ?? event.event_type}</strong><time>{formatDateTime(event.created_at)}</time>{event.payload && <pre>{JSON.stringify(event.payload, null, 2)}</pre>}</div></article>)}{!detail.events.length && <p className="drawer-empty">Событий пока нет.</p>}</div></section>}
