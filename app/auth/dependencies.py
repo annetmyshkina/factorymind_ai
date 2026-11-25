@@ -27,6 +27,11 @@ def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
+    return get_user_from_token(token, db)
+
+
+def get_user_from_token(token: str, db: Session) -> User:
+    """Проверяет access-токен без привязки к обязательной OAuth2-схеме."""
     try:
         user_id = decode_access_token(token)
     except jwt.InvalidTokenError:

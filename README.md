@@ -91,6 +91,28 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/equipment
 понизить через API. MQTT остаётся отдельным машинным каналом и не использует
 пользовательский JWT.
 
+Для HTTP-датчика администратор выпускает отдельный ключ, привязанный к оборудованию.
+Открытое значение приходит только в ответе создания — повторно получить его нельзя:
+
+```bash
+DEVICE_KEY=$(curl -fsS -X POST \
+  http://127.0.0.1:8000/equipment/19/api-keys \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Датчик компрессора CMP-01"}' | python -c \
+  'import json,sys; print(json.load(sys.stdin)["api_key"])')
+
+curl -fsS -X POST http://127.0.0.1:8000/equipment/19/telemetry \
+  -H "X-API-Key: $DEVICE_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"temperature_c":72.4,"vibration_mm_s":3.1}'
+```
+
+Список показывает только безопасные метаданные. Для ротации сначала создайте новый
+ключ, переключите датчик, затем вызовите
+`POST /equipment/{id}/api-keys/{key_id}/revoke` для старого. В production ключи
+передаются только по HTTPS и не записываются в репозиторий или логи.
+
 Тесты не требуют PostgreSQL и MQTT: они работают на in-memory SQLite
 (`tests/conftest.py`), MQTT-подписчик при `ENVIRONMENT=test` не запускается.
 
@@ -224,6 +246,9 @@ API не ждёт Telegram: событие записывается в PostgreSQ
 | `GET` | `/equipment` | Список оборудования |
 | `GET` | `/equipment/{id}` | Карточка оборудования |
 | `PATCH` | `/equipment/{id}` | Обновить оборудование |
+| `POST` | `/equipment/{id}/api-keys` | Выпустить ключ HTTP-датчика (admin) |
+| `GET` | `/equipment/{id}/api-keys` | Метаданные ключей без секретов (admin) |
+| `POST` | `/equipment/{id}/api-keys/{key_id}/revoke` | Отозвать ключ HTTP-датчика (admin) |
 | `POST` | `/equipment/{id}/telemetry` | Добавить показания (запускает правила) |
 | `GET` | `/equipment/{id}/telemetry` | История показаний (`limit`, `offset`, `since`, `until`) |
 | `POST` | `/equipment/{id}/monitoring-rules` | Создать правило мониторинга |

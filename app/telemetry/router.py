@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import require_authenticated, require_operator
+from app.auth.dependencies import require_authenticated
 from app.core.database import get_db
 from app.equipment.models import Equipment
 from app.incidents.automation import ensure_incident_for_deviation
@@ -18,6 +18,7 @@ from app.notifications.service import (
     observe_committed_notifications,
 )
 from app.observability.metrics import observe_incident_created
+from app.telemetry.dependencies import authorize_telemetry_write
 from app.telemetry.models import EquipmentTelemetry
 from app.telemetry.schemas import (
     TelemetryCreate,
@@ -28,7 +29,6 @@ from app.telemetry.schemas import (
 router = APIRouter(
     prefix="/equipment",
     tags=["Telemetry"],
-    dependencies=[Depends(require_authenticated)],
 )
 
 logger = structlog.get_logger(__name__)
@@ -43,7 +43,7 @@ TelemetryHistoryQuery = Annotated[
     "/{equipment_id}/telemetry",
     response_model=TelemetryResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_operator)],
+    dependencies=[Depends(authorize_telemetry_write)],
 )
 def create_telemetry(
     equipment_id: int,
@@ -101,6 +101,7 @@ def create_telemetry(
 @router.get(
     "/{equipment_id}/telemetry",
     response_model=list[TelemetryResponse],
+    dependencies=[Depends(require_authenticated)],
 )
 def get_telemetry(
     equipment_id: int,
