@@ -9,6 +9,24 @@ export interface Equipment {
   is_active: boolean;
 }
 
+export interface EquipmentApiKey {
+  id: number;
+  equipment_id: number;
+  name: string;
+  key_prefix: string;
+  is_active: boolean;
+  created_by_user_id: number;
+  revoked_by_user_id: number | null;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface CreatedEquipmentApiKey extends EquipmentApiKey {
+  api_key: string;
+}
+
 export interface Telemetry {
   id: number;
   equipment_id: number;

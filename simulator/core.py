@@ -40,6 +40,20 @@ class TelemetryEvent:
         payload.pop("scenario")
         return payload
 
+    def http_payload(self) -> dict[str, float | bool]:
+        """Возвращает только метрики действующего HTTP-контракта."""
+        return {
+            "temperature_c": self.temperature_c,
+            "vibration_mm_s": self.vibration_mm_s,
+            "ambient_temperature_c": self.ambient_temperature_c,
+            "suction_pressure_kpa_g": self.suction_pressure_kpa_g,
+            "discharge_pressure_kpa_g": self.discharge_pressure_kpa_g,
+            "compressor_current_a": self.compressor_current_a,
+            "compressor_vsd_frequency_hz": self.compressor_vsd_frequency_hz,
+            "coolant_flow_rate_m3_h": self.coolant_flow_rate_m3_h,
+            "compressor_running": self.compressor_running,
+        }
+
     def to_json(self) -> str:
         return json.dumps(
             self.mqtt_payload(),

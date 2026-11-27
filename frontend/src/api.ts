@@ -1,5 +1,5 @@
 import { demoData } from "./demo";
-import type { AnalysisFeedback, CurrentUser, DashboardData, DataMode, Deviation, Equipment, FeedbackRating, Incident, IncidentAnalysis, IncidentDetail, IncidentResolution, IncidentStatus, IncidentWorkspace, KnowledgeDocument, OperationalReport, Telemetry } from "./types";
+import type { AnalysisFeedback, CreatedEquipmentApiKey, CurrentUser, DashboardData, DataMode, Deviation, Equipment, EquipmentApiKey, FeedbackRating, Incident, IncidentAnalysis, IncidentDetail, IncidentResolution, IncidentStatus, IncidentWorkspace, KnowledgeDocument, OperationalReport, Telemetry } from "./types";
 
 const STORAGE_KEY = "factorymind-api-base";
 const TOKEN_KEY = "factorymind-access-token";
@@ -79,6 +79,26 @@ export async function login(username: string, password: string): Promise<Current
 
 export function loadCurrentUser(signal?: AbortSignal): Promise<CurrentUser> {
   return apiRequest<CurrentUser>("/auth/me", { signal });
+}
+
+export function loadEquipmentApiKeys(equipmentId: number, signal?: AbortSignal): Promise<EquipmentApiKey[]> {
+  return get(`/equipment/${equipmentId}/api-keys`, signal);
+}
+
+export function createEquipmentApiKey(
+  equipmentId: number,
+  payload: { name: string; expires_at: string | null },
+): Promise<CreatedEquipmentApiKey> {
+  return apiRequest(`/equipment/${equipmentId}/api-keys`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function revokeEquipmentApiKey(equipmentId: number, keyId: number): Promise<EquipmentApiKey> {
+  return apiRequest(`/equipment/${equipmentId}/api-keys/${keyId}/revoke`, {
+    method: "POST",
+  });
 }
 
 function get<T>(path: string, signal?: AbortSignal): Promise<T> {

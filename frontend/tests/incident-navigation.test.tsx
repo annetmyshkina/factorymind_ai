@@ -2,20 +2,37 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "../src/App";
-import { loadCurrentUser, loadDashboard, loadIncidentWorkspace, login, updateIncident } from "../src/api";
+import { createEquipmentApiKey, loadCurrentUser, loadDashboard, loadEquipmentApiKeys, loadIncidentWorkspace, login, revokeEquipmentApiKey, updateIncident } from "../src/api";
 import { demoData } from "../src/demo";
-import type { CurrentUser, DashboardData, Incident, IncidentWorkspace } from "../src/types";
+import type { CreatedEquipmentApiKey, CurrentUser, DashboardData, EquipmentApiKey, Incident, IncidentWorkspace } from "../src/types";
 
 vi.mock("../src/api", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/api")>(),
   loadCurrentUser: vi.fn(),
   login: vi.fn(),
   loadDashboard: vi.fn(),
+  loadEquipmentApiKeys: vi.fn(),
+  createEquipmentApiKey: vi.fn(),
+  revokeEquipmentApiKey: vi.fn(),
   loadIncidentWorkspace: vi.fn(),
   updateIncident: vi.fn(),
 }));
 
 let data: DashboardData;
+
+const existingApiKey: EquipmentApiKey = {
+  id: 7,
+  equipment_id: 11,
+  name: "Шлюз компрессора",
+  key_prefix: "fmk_1234567890abcdef",
+  is_active: true,
+  created_by_user_id: 1,
+  revoked_by_user_id: null,
+  created_at: "2026-11-26T10:00:00Z",
+  expires_at: null,
+  last_used_at: null,
+  revoked_at: null,
+};
 
 const currentUser: CurrentUser = {
   id: 1,
@@ -36,6 +53,7 @@ beforeEach(() => {
   vi.mocked(loadCurrentUser).mockResolvedValue(currentUser);
   vi.mocked(login).mockResolvedValue(currentUser);
   vi.mocked(loadDashboard).mockImplementation(async () => ({ data: structuredClone(data), mode: "live" }));
+  vi.mocked(loadEquipmentApiKeys).mockResolvedValue([existingApiKey]);
   vi.mocked(loadIncidentWorkspace).mockImplementation(async (id): Promise<IncidentWorkspace> => ({
     detail: { ...data.incidents.find((item) => item.id === id)!, deviation_ids: [], events: [] },
     deviations: [], analyses: [], resolution: null,
@@ -47,7 +65,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 async function openIncidentList() {
   await screen.findByText("Данные в реальном времени");
@@ -127,5 +148,71 @@ describe("Аутентификация оператора", () => {
     await screen.findByText("Данные в реальном времени");
     expect(login).toHaveBeenCalledWith("admin", "admin");
     expect(loadDashboard).toHaveBeenCalled();
+  });
+});
+
+describe("Машинные ключи оборудования", () => {
+  it("показывает новый секрет только до закрытия окна", async () => {
+    const equipmentId = data.equipment[0].id;
+    const created: CreatedEquipmentApiKey = {
+      ...existingApiKey,
+      id: 8,
+      equipment_id: equipmentId,
+      name: "Новый HTTP-шлюз",
+      key_prefix: "fmk_fedcba0987654321",
+      api_key: "fmk_fedcba0987654321_one_time_secret",
+    };
+    vi.mocked(createEquipmentApiKey).mockResolvedValue(created);
+    render(<App />);
+
+    await screen.findByText("Данные в реальном времени");
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Основная навигация" })).getByRole("button", { name: /Оборудование/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Ключи" })[0]);
+
+    const dialog = await screen.findByRole("dialog", { name: "Ключи HTTP-телеметрии" });
+    expect(await within(dialog).findByText("Шлюз компрессора")).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText("Назначение ключа"), { target: { value: "Новый HTTP-шлюз" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Выпустить ключ" }));
+
+    expect(await within(dialog).findByText(created.api_key)).toBeTruthy();
+    expect(createEquipmentApiKey).toHaveBeenCalledWith(equipmentId, {
+      name: "Новый HTTP-шлюз",
+      expires_at: null,
+    });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Закрыть управление ключами" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Ключи" })[0]);
+    const reopened = await screen.findByRole("dialog", { name: "Ключи HTTP-телеметрии" });
+    expect(within(reopened).queryByText(created.api_key)).toBeNull();
+  });
+
+  it("отзывает активный ключ после подтверждения", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(revokeEquipmentApiKey).mockResolvedValue({
+      ...existingApiKey,
+      is_active: false,
+      revoked_by_user_id: 1,
+      revoked_at: "2026-11-27T12:00:00Z",
+    });
+    render(<App />);
+
+    await screen.findByText("Данные в реальном времени");
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Основная навигация" })).getByRole("button", { name: /Оборудование/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Ключи" })[0]);
+    const dialog = await screen.findByRole("dialog", { name: "Ключи HTTP-телеметрии" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Отозвать" }));
+
+    expect(await within(dialog).findByText("Отозван")).toBeTruthy();
+    expect(revokeEquipmentApiKey).toHaveBeenCalledWith(data.equipment[0].id, existingApiKey.id);
+  });
+
+  it("не показывает управление ключами пользователю без роли admin", async () => {
+    vi.mocked(loadCurrentUser).mockResolvedValue({ ...currentUser, role: "engineer" });
+    render(<App />);
+
+    await screen.findByText("Данные в реальном времени");
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Основная навигация" })).getByRole("button", { name: /Оборудование/ }));
+
+    expect(screen.queryByRole("button", { name: "Ключи" })).toBeNull();
   });
 });

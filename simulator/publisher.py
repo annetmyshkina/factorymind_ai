@@ -1,12 +1,29 @@
-"""Тонкий MQTT-адаптер симулятора."""
+"""MQTT- и HTTP-адаптеры транспорта симулятора."""
 
+import json
+from dataclasses import dataclass
 from threading import Event
 from types import TracebackType
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
 import paho.mqtt.client as mqtt
 
 from simulator.core import TelemetryEvent, render_topic
+
+
+@dataclass(frozen=True, slots=True)
+class HTTPTarget:
+    equipment_id: int
+    api_key: str
+
+    def __post_init__(self) -> None:
+        if self.equipment_id <= 0:
+            raise ValueError("HTTP equipment ID must be positive")
+        if not self.api_key:
+            raise ValueError("HTTP API key must not be empty")
 
 
 class MQTTPublisher:
@@ -103,3 +120,86 @@ class MQTTPublisher:
             return
 
         raise ConnectionError("MQTT publish failed") from error
+
+
+class HTTPPublisher:
+    """Отправляет метрики в FastAPI с отдельным ключом каждого оборудования."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        targets: dict[str, HTTPTarget],
+        timeout: float = 10,
+    ) -> None:
+        normalized_url = base_url.rstrip("/")
+        parsed = urlsplit(normalized_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("HTTP API base URL must use http or https")
+        if parsed.query or parsed.fragment:
+            raise ValueError("HTTP API base URL must not contain query or fragment")
+        if not targets:
+            raise ValueError("at least one HTTP target is required")
+        if timeout <= 0:
+            raise ValueError("HTTP timeout must be positive")
+        self._base_url = normalized_url
+        self._targets = targets
+        self._timeout = timeout
+
+    def __enter__(self) -> "HTTPPublisher":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        return None
+
+    def publish(self, event: TelemetryEvent) -> None:
+        target = self._targets.get(event.equipment_code)
+        if target is None:
+            raise ValueError(
+                f"HTTP target is not configured for {event.equipment_code}",
+            )
+        request = Request(
+            (f"{self._base_url}/equipment/{target.equipment_id}/telemetry"),
+            data=json.dumps(
+                event.http_payload(),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "X-API-Key": target.api_key,
+            },
+            method="POST",
+        )
+
+        for attempt in range(2):
+            try:
+                with urlopen(request, timeout=self._timeout) as response:  # noqa: S310
+                    if response.status != 201:
+                        raise RuntimeError(
+                            "HTTP telemetry returned unexpected status "
+                            f"{response.status} for {event.equipment_code}",
+                        )
+                    return
+            except HTTPError as exc:
+                retryable = exc.code in {408, 429} or exc.code >= 500
+                if attempt == 0 and retryable:
+                    continue
+                raise RuntimeError(
+                    "HTTP telemetry rejected "
+                    f"for {event.equipment_code} with status {exc.code}",
+                ) from exc
+            except (TimeoutError, URLError) as exc:
+                if attempt == 0:
+                    continue
+                raise ConnectionError(
+                    f"HTTP telemetry failed for {event.equipment_code}",
+                ) from exc
+
+        raise ConnectionError(f"HTTP telemetry failed for {event.equipment_code}")

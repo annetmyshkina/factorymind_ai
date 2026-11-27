@@ -1,12 +1,15 @@
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import Mock, patch
+from urllib.error import HTTPError
 from uuid import UUID
 
 import pytest
 
 from app.telemetry.mqtt.schemas import MQTTTelemetryMessage
-from simulator.cli import main
+from app.telemetry.schemas import TelemetryCreate
+from simulator.cli import main, parse_http_targets
 from simulator.core import (
     Scenario,
     TelemetryGenerator,
@@ -14,7 +17,7 @@ from simulator.core import (
     scenario_at,
 )
 from simulator.delivery import DeliveryPlanner, DeliveryPolicy
-from simulator.publisher import MQTTPublisher
+from simulator.publisher import HTTPPublisher, HTTPTarget, MQTTPublisher
 from simulator.runner import SimulatorConfig, SimulatorRunner
 
 NOW = datetime(2026, 11, 17, 12, 0, tzinfo=UTC)
@@ -53,6 +56,17 @@ def test_generated_event_matches_existing_mqtt_contract() -> None:
     assert message.equipment_code == "CMP-01"
     assert message.measured_at == NOW
     assert "scenario" not in json.loads(event.to_json())
+
+
+def test_generated_event_matches_existing_http_contract() -> None:
+    event = _event()
+
+    message = TelemetryCreate.model_validate(event.http_payload())
+
+    assert message.temperature_c == event.temperature_c
+    assert message.vibration_mm_s == event.vibration_mm_s
+    assert "event_id" not in event.http_payload()
+    assert "equipment_code" not in event.http_payload()
 
 
 def test_generation_is_reproducible_with_same_seed() -> None:
@@ -318,6 +332,82 @@ def test_default_mqtt_client_ids_are_unique() -> None:
     assert first_id != second_id
 
 
+def test_http_publisher_uses_equipment_id_key_and_metric_payload() -> None:
+    response = Mock(status=201)
+    response.__enter__ = Mock(return_value=response)
+    response.__exit__ = Mock(return_value=None)
+    event = _event()
+
+    with patch("simulator.publisher.urlopen", return_value=response) as send:
+        with HTTPPublisher(
+            base_url="http://api.test/",
+            targets={
+                "CMP-01": HTTPTarget(
+                    equipment_id=19,
+                    api_key="fmk_test_secret",
+                ),
+            },
+        ) as publisher:
+            publisher.publish(event)
+
+    request = send.call_args.args[0]
+    assert request.full_url == "http://api.test/equipment/19/telemetry"
+    assert request.method == "POST"
+    assert request.get_header("X-api-key") == "fmk_test_secret"
+    assert json.loads(request.data) == event.http_payload()
+    assert send.call_args.kwargs == {"timeout": 10}
+
+
+def test_http_publisher_retries_server_error_without_exposing_key() -> None:
+    response = Mock(status=201)
+    response.__enter__ = Mock(return_value=response)
+    response.__exit__ = Mock(return_value=None)
+    error = HTTPError("http://api.test", 503, "unavailable", {}, None)
+    target = HTTPTarget(equipment_id=19, api_key="secret-must-not-leak")
+
+    with patch(
+        "simulator.publisher.urlopen",
+        side_effect=[error, response],
+    ) as send:
+        HTTPPublisher(
+            base_url="http://api.test",
+            targets={"CMP-01": target},
+        ).publish(_event())
+
+    assert send.call_count == 2
+
+    rejected = HTTPError("http://api.test", 401, "unauthorized", {}, None)
+    with (
+        patch("simulator.publisher.urlopen", side_effect=rejected),
+        pytest.raises(RuntimeError) as exc_info,
+    ):
+        HTTPPublisher(
+            base_url="http://api.test",
+            targets={"CMP-01": target},
+        ).publish(_event())
+    assert "secret-must-not-leak" not in str(exc_info.value)
+
+
+def test_http_targets_json_is_strictly_validated() -> None:
+    targets = parse_http_targets(
+        json.dumps(
+            {
+                "CMP-01": {
+                    "equipment_id": 19,
+                    "api_key": "fmk_key",
+                },
+            },
+        ),
+    )
+
+    assert targets == {
+        "CMP-01": HTTPTarget(equipment_id=19, api_key="fmk_key"),
+    }
+
+    with pytest.raises(ValueError):
+        parse_http_targets('{"CMP-01":{"equipment_id":19}}')
+
+
 def test_cli_runs_finite_scenario_without_real_broker() -> None:
     publisher = FakePublisher()
 
@@ -336,6 +426,57 @@ def test_cli_runs_finite_scenario_without_real_broker() -> None:
     assert result == 0
     assert len(publisher.events) == 2
     assert {event.scenario for event in publisher.events} == {"critical"}
+
+
+def test_cli_runs_http_transport_with_configured_target(tmp_path: Path) -> None:
+    publisher = FakePublisher()
+    targets = json.dumps(
+        {"CMP-01": {"equipment_id": 19, "api_key": "fmk_key"}},
+    )
+    targets_file = tmp_path / "http-targets.json"
+    targets_file.write_text(targets, encoding="utf-8")
+
+    with (
+        patch("simulator.cli.HTTPPublisher", return_value=publisher) as factory,
+    ):
+        result = main(
+            [
+                "--transport",
+                "http",
+                "--equipment",
+                "CMP-01",
+                "--steps",
+                "1",
+                "--api-base-url",
+                "http://api.test",
+                "--http-targets-file",
+                str(targets_file),
+            ],
+        )
+
+    assert result == 0
+    factory.assert_called_once_with(
+        base_url="http://api.test",
+        targets={"CMP-01": HTTPTarget(equipment_id=19, api_key="fmk_key")},
+        timeout=10,
+    )
+    assert len(publisher.events) == 1
+
+
+def test_cli_rejects_delivery_faults_for_http_transport() -> None:
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "--transport",
+                "http",
+                "--equipment",
+                "CMP-01",
+                "--steps",
+                "1",
+                "--duplicate-rate",
+                "1",
+            ],
+        )
 
 
 @pytest.mark.parametrize(

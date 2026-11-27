@@ -88,7 +88,8 @@ HTTP-датчик может отправлять телеметрию по от
 `POST /equipment/{id}/api-keys`; открытое значение возвращается только один раз.
 Для ротации создайте новый ключ, переключите датчик и отзовите старый через
 `POST /equipment/{id}/api-keys/{key_id}/revoke`. MQTT использует отдельную
-аутентификацию брокера.
+аутентификацию брокера. Администратор может выполнять те же операции в разделе
+«Оборудование» frontend.
 
 ## Основные команды
 
@@ -101,7 +102,7 @@ make notification-worker  # worker Telegram-уведомлений
 make db-upgrade           # применить миграции
 make db-check             # текущая ревизия БД
 
-make simulator-run        # локальный MQTT-симулятор
+make simulator-run        # локальный симулятор MQTT/HTTP
 make simulator-start      # симулятор в Docker
 make simulator-logs
 
@@ -114,10 +115,36 @@ make observability-stop
 
 ## Симулятор и наблюдаемость
 
-Симулятор публикует синтетическую MQTT-телеметрию в
+По умолчанию симулятор публикует синтетическую MQTT-телеметрию в
 `factorymind/equipment/+/telemetry`. Оборудование с кодами из
 `SIMULATOR_EQUIPMENT_CODES` необходимо заранее создать через API. Значения
 симулятора демонстрационные и не являются нормативами производителя.
+
+Для проверки машинной HTTP-авторизации создайте локальный файл
+`.simulator-http-targets.json` (он исключён из Git):
+
+```json
+{
+  "CMP-01": {
+    "equipment_id": 19,
+    "api_key": "ключ, выпущенный для оборудования 19"
+  }
+}
+```
+
+Запустите конечный сценарий через HTTP:
+
+```bash
+SIMULATOR_TRANSPORT=http \
+SIMULATOR_EQUIPMENT_CODES=CMP-01 \
+SIMULATOR_HTTP_TARGETS_FILE=.simulator-http-targets.json \
+SIMULATOR_STEPS=5 \
+make simulator-run
+```
+
+HTTP-режим предназначен для проверки API-ключей и не поддерживает искусственные
+потери, дубли и задержки: HTTP-контракт пока не содержит идентификатор события для
+идемпотентной повторной доставки. Секреты ключей не выводятся в журнал симулятора.
 
 После `make observability-start` доступны:
 
